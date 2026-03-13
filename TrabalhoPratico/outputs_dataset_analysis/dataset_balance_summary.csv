@@ -1,3 +1,0 @@
-dataset,total_images,n_classes,mean_per_class,std_per_class,min_class_count,max_class_count,imbalance_ratio_max_div_min,coefficient_of_variation,balance_label
-train,206137,26,7928.346153846154,240.68922546395356,7410,8458,1.1414304993252362,0.030358062172549286,Muito equilibrado
-test,1815,26,69.8076923076923,0.9615384615384616,65,70,1.0769230769230769,0.013774104683195593,Muito equilibrado
