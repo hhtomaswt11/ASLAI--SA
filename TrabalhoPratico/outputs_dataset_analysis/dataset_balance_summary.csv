@@ -1,0 +1,3 @@
+dataset,total_images,n_classes,mean_per_class,std_per_class,min_class_count,max_class_count,imbalance_ratio_max_div_min,coefficient_of_variation,balance_label
+train,205649,29,7091.3448275862065,2268.649062933513,0,8528,inf,0.3199180293853696,Desequilíbrio relevante
+test,26986,29,930.551724137931,253.27694889558134,0,1000,inf,0.2721793343945697,Desequilíbrio relevante

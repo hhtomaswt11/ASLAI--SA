@@ -1,0 +1,731 @@
+<!DOCTYPE html>
+<html lang="pt-PT">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ASLAI · Tradutor ASL</title>
+    
+    <link rel="icon" type="image/png" href="assets/logo.png">
+    
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    
+    <style>
+        :root {
+            --bg: #181103;
+            --surface: #2b2007;
+            --panel: rgba(43, 32, 7, 0.74);
+            --border: rgba(255, 194, 15, 0.16);
+            --accent: #ffc20f; /* Logo yellow */
+            --success: #d39b00; /* Gold */
+            --warn: #f97316; /* Orange */
+            --text: #fff7df;
+            --muted: #cfb97b;
+            --radius-lg: 24px;
+            --radius-md: 16px;
+            --font-sans: 'Inter', sans-serif;
+            --font-mono: 'JetBrains Mono', monospace;
+            --shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            background: var(--bg);
+            background-image: radial-gradient(circle at 2px 2px, rgba(255, 194, 15, 0.05) 1px, transparent 0);
+            background-size: 40px 40px;
+            color: var(--text);
+            font-family: var(--font-sans);
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* ── Header ──────────────────────────────────────────────────────────── */
+        header {
+            padding: 15px 40px; /* Reduzi um pouco o padding vertical */
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: rgba(24, 17, 3, 0.86);
+            backdrop-filter: blur(12px);
+            border-bottom: 1px solid var(--border);
+            z-index: 100;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 15px; /* Aumentei o gap para dar ar respirável ao PNG */
+        }
+
+        /* 2. ALTERADO: Estilo para contentor do PNG */
+
+.logo-container {
+    width: 80px;
+    height: 80px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #181103 !important; /* mesma cor do header */
+    border-radius: 16px;
+    padding: 8px;
+    box-shadow: inset 0 0 0 1px rgba(255, 194, 15, 0.12);
+}
+
+.logo-img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    background: transparent;
+    mix-blend-mode: normal;
+    filter: brightness(1.08) drop-shadow(0 0 10px rgba(255, 194, 15, 0.45));
+}
+
+        .logo h1 {
+            font-size: 1.25rem;
+            font-weight: 700;
+            letter-spacing: -0.025em;
+            line-height: 1.2;
+        }
+        .logo span { color: var(--accent); opacity: 0.8; }
+
+        .status-group {
+            display: flex;
+            gap: 8px;
+        }
+
+        .badge {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            padding: 6px 12px;
+            border-radius: 99px;
+            font-size: 0.75rem;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: var(--muted);
+            transition: 0.3s;
+        }
+
+        .badge i { font-size: 8px; }
+        .badge.ok { color: var(--text); border-color: rgba(16, 185, 129, 0.3); }
+        .badge.ok i { color: var(--success); text-shadow: 0 0 8px var(--success); }
+        .badge.warn i { color: var(--warn); }
+
+        /* ── Main Layout ─────────────────────────────────────────────────────── */
+        main {
+            display: grid;
+            grid-template-columns: 1fr 420px;
+            gap: 24px;
+            padding: 24px;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        /* ── Camera Viewport ─────────────────────────────────────────────────── */
+        .viewport-container {
+            position: relative;
+            background: linear-gradient(180deg, #080603 0%, #1a1204 100%);
+            border-radius: var(--radius-lg);
+            border: 1px solid var(--border);
+            overflow: hidden;
+            box-shadow: var(--shadow);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        #videoEl {
+            width: 100%; height: 100%;
+            object-fit: cover;
+            transform: scaleX(-1);
+        }
+
+        #annotatedImg {
+            position: absolute;
+            inset: 0; width: 100%; height: 100%;
+            object-fit: cover;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.2s;
+        }
+        #annotatedImg.visible { opacity: 1; }
+
+        /* HUD Overlay */
+        .hud-overlay {
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            padding: 30px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+
+        .letter-card {
+            background: rgba(24, 17, 3, 0.68);
+            backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 194, 15, 0.18);
+            padding: 20px;
+            border-radius: var(--radius-md);
+            width: fit-content;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+            box-shadow: 0 20px 25px -5px rgba(0,0,0,0.3);
+            animation: slideIn 0.4s ease-out;
+        }
+
+        @keyframes slideIn { from { opacity: 0; transform: translateX(-20px); } }
+
+        #letterDisplay {
+            font-family: var(--font-mono);
+            font-size: 4.5rem;
+            font-weight: 700;
+            line-height: 1;
+            color: var(--accent);
+        }
+        #letterDisplay.no-hand { color: var(--muted); font-size: 2rem; }
+
+        .confidence-meter {
+            width: 80px; height: 6px;
+            background: rgba(255, 255, 255, 0.08);
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        #confidenceBar {
+            height: 100%;
+            background: var(--success);
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+
+        .viewport-controls {
+            pointer-events: auto;
+            align-self: center;
+            display: flex;
+            gap: 12px;
+            background: rgba(24, 17, 3, 0.58);
+            padding: 12px;
+            border-radius: 99px;
+            backdrop-filter: blur(8px);
+            border: 1px solid var(--border);
+        }
+
+        .icon-btn {
+            width: 48px; height: 48px;
+            border-radius: 50%;
+            border: none;
+            background: var(--surface);
+            color: var(--text);
+            cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 1.2rem;
+            transition: 0.2s;
+        }
+        .icon-btn:hover { background: var(--accent); color: #241800; transform: scale(1.1); }
+        .icon-btn.active { background: var(--warn); color: white; }
+
+        /* ── Side Panel ──────────────────────────────────────────────────────── */
+        .side-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            overflow-y: auto;
+            padding-right: 4px;
+        }
+
+        .glass-panel {
+            background: var(--panel);
+            backdrop-filter: blur(10px);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            padding: 20px;
+        }
+
+        .panel-label {
+            font-size: 0.7rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: var(--muted);
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        /* Queue Chips */
+        .queue-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            min-height: 50px;
+        }
+
+        .char-chip {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            padding: 8px 14px;
+            border-radius: 10px;
+            font-family: var(--font-mono);
+            font-weight: 600;
+            color: var(--accent);
+            animation: pop 0.2s ease-out;
+        }
+        .char-chip.space { color: var(--muted); background: rgba(255, 194, 15, 0.06); border-style: dashed; }
+
+        @keyframes pop { from { transform: scale(0.8); opacity: 0; } }
+
+        /* Phrase Box */
+        .phrase-box {
+            background: rgba(14, 10, 2, 0.36);
+            border-radius: 12px;
+            padding: 16px;
+            font-size: 1.1rem;
+            line-height: 1.5;
+            min-height: 60px;
+            margin-bottom: 12px;
+            border: 1px solid var(--border);
+        }
+        .phrase-empty { color: var(--muted); font-style: italic; font-size: 0.9rem; }
+
+        /* Output Box */
+        .output-box {
+            background: linear-gradient(135deg, rgba(255, 194, 15, 0.16), rgba(255, 194, 15, 0.03));
+            border: 1px solid rgba(255, 194, 15, 0.28);
+            border-radius: 12px;
+            padding: 16px;
+            font-size: 1.1rem;
+            font-weight: 500;
+            color: #ffe29a;
+            min-height: 60px;
+        }
+
+        /* Action Buttons */
+        .btn-group {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-top: 12px;
+        }
+
+        .action-btn {
+            padding: 12px;
+            border-radius: 10px;
+            border: 1px solid var(--border);
+            background: var(--surface);
+            color: var(--text);
+            font-family: var(--font-sans);
+            font-weight: 600;
+            font-size: 0.85rem;
+            cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+            gap: 8px;
+            transition: 0.2s;
+        }
+        .action-btn:hover:not(:disabled) { border-color: var(--accent); background: rgba(255, 194, 15, 0.12); }
+        .action-btn.primary { background: linear-gradient(135deg, var(--accent), #d39b00); border: none; color: #241800; }
+        .action-btn.primary:hover { opacity: 0.9; transform: translateY(-2px); }
+        .action-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+        /* TTS Big Button */
+        .speak-btn-large {
+            width: 100%;
+            margin-top: 16px;
+            padding: 16px;
+            border-radius: 12px;
+            border: none;
+            background: linear-gradient(135deg, var(--accent), #d39b00);
+            color: white;
+            font-weight: 700;
+            display: flex; align-items: center; justify-content: center;
+            gap: 12px;
+            cursor: pointer;
+            box-shadow: 0 10px 15px -3px rgba(255, 194, 15, 0.24);
+        }
+
+        /* Utils */
+        .log-viewport {
+            font-family: var(--font-mono);
+            font-size: 0.7rem;
+            color: var(--muted);
+            max-height: 80px;
+            overflow-y: auto;
+        }
+        
+        .shortcut-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+            font-size: 0.75rem;
+            color: var(--muted);
+        }
+        kbd {
+            background: var(--surface);
+            padding: 2px 6px;
+            border-radius: 4px;
+            color: var(--accent);
+            font-family: var(--font-mono);
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 10px; }
+
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="logo">
+            <div class="logo-container">
+                <img src="assets/logo.png" alt="ASLAI Logo" class="logo-img">
+            </div>
+            <div>
+                <h1>ASL<span>AI</span></h1>
+                <p style="font-size: 0.65rem; color: var(--muted); text-transform: uppercase; letter-spacing: 1px;">Tradução em Tempo Real</p>
+            </div>
+        </div>
+        <div class="status-group">
+            <div class="badge" id="badgeServer"><i class="ph-fill ph-circle"></i> Engine</div>
+            <div class="badge" id="badgeLLM"><i class="ph-fill ph-circle"></i> Inteligência</div>
+            <div class="badge" id="badgeCam"><i class="ph-fill ph-circle"></i> Vision</div>
+        </div>
+    </header>
+
+    <main>
+        <section class="viewport-container">
+            <video id="videoEl" autoplay playsinline muted></video>
+            <img id="annotatedImg" alt="Analysis Overlay">
+            
+            <div class="hud-overlay">
+                <div class="letter-card">
+                    <div id="letterDisplay" class="no-hand">—</div>
+                    <div class="confidence-meter">
+                        <div id="confidenceBar"></div>
+                    </div>
+                </div>
+
+                <div class="viewport-controls">
+                    <button class="icon-btn active" id="btnCapture" onclick="toggleCapture()" title="Pausar/Play (P)">
+                        <i class="ph-bold ph-pause" id="pauseIcon"></i>
+                    </button>
+                    <button class="icon-btn" onclick="addSpace()" title="Espaço (S)">
+                        <i class="ph-bold ph-arrows-out-line"></i>
+                    </button>
+                    <button class="icon-btn" style="background: linear-gradient(135deg, var(--accent), #d39b00); color: #241800;" onclick="confirmLetter()" title="Confirmar (A)">
+                        <i class="ph-bold ph-check"></i>
+                    </button>
+                </div>
+            </div>
+
+            <div id="camPlaceholder" style="position: absolute; text-align: center; color: var(--muted);">
+                <i class="ph ph-aperture" style="font-size: 3rem; margin-bottom: 10px; display: block;"></i>
+                <p>A carregar visão computacional...</p>
+            </div>
+        </section>
+
+        <section class="side-panel">
+            
+            <div class="glass-panel">
+                <div class="panel-label"><i class="ph-bold ph-stack"></i> Sequência de Gestos</div>
+                <div class="queue-container" id="queueDisplay">
+                    <span class="phrase-empty">Aguardando deteção...</span>
+                </div>
+                <div class="btn-group">
+                    <button class="action-btn" onclick="deleteLastLetter()"><i class="ph ph-backspace"></i> Apagar</button>
+                    <button class="action-btn" onclick="clearAll()"><i class="ph ph-trash"></i> Limpar</button>
+                </div>
+            </div>
+
+            <div class="glass-panel">
+                <div class="panel-label"><i class="ph-bold ph-text-t"></i> Frase Capturada</div>
+                <div class="phrase-box" id="phraseRaw">
+                    <span class="phrase-empty">As letras aparecerão aqui...</span>
+                </div>
+                <button class="action-btn primary" id="btnCorrect" onclick="correctPhrase()" disabled style="width: 100%;">
+                    <i class="ph-bold ph-sparkle"></i> Interpretar Frase
+                </button>
+            </div>
+
+            <div class="glass-panel" style="border-color: rgba(255, 194, 15, 0.34);">
+                <div class="panel-label"><i class="ph-bold ph-robot"></i> Tradução Contextual</div>
+                <div class="output-box" id="llmOutput">
+                    <span class="phrase-empty" style="color: rgba(255,255,255,0.2);">Aguardando processamento...</span>
+                </div>
+                <div id="llmMeta" style="font-size: 0.6rem; color: var(--muted); margin-top: 8px; font-family: var(--font-mono);"></div>
+                
+                <button class="speak-btn-large" id="btnSpeak" onclick="speakPhrase()" disabled>
+                    <i class="ph-fill ph-speaker-high"></i> OUVIR TRADUÇÃO
+                </button>
+            </div>
+
+            <div class="glass-panel">
+                <div class="shortcut-grid">
+                    <span><kbd>A</kbd> Adicionar</span>
+                    <span><kbd>S</kbd> Espaço</span>
+                    <span><kbd>Ent</kbd> Corrigir</span>
+                    <span><kbd>P</kbd> Pause</span>
+                </div>
+                <hr style="border: 0; border-top: 1px solid var(--border); margin: 15px 0;">
+                <div class="log-viewport" id="logEl"></div>
+            </div>
+
+        </section>
+    </main>
+
+    <footer style="padding: 10px 40px; font-size: 0.65rem; color: var(--muted); display: flex; justify-content: space-between; border-top: 1px solid var(--border);">
+        <span>UMinho · Mestrado em IA · Sensorização e Ambiente · Grupo 12</span>
+        <span>Tecnologia: MediaPipe + MLP + Ollama</span>
+    </footer>
+
+<script>
+// LÓGICA ORIGINAL INTACTA
+const API = 'http://localhost:5000/api';
+const CAPTURE_INTERVAL_MS  = 200;
+const CONFIRM_HOLD_FRAMES  = 8;
+const CONFIDENCE_THRESHOLD = 0.75;
+
+let capturing       = true;
+let stream          = null;
+let captureTimer    = null;
+let lastLetter      = null;
+let consecutiveHold = 0;
+let autoAdded       = false;
+let letterQueue = [];
+let currentLetter = null;
+let correctedPhrase = '';
+
+const videoEl       = document.getElementById('videoEl');
+const annotatedImg  = document.getElementById('annotatedImg');
+const letterDisplay = document.getElementById('letterDisplay');
+const confidenceBar = document.getElementById('confidenceBar');
+const queueDisplay  = document.getElementById('queueDisplay');
+const phraseRaw     = document.getElementById('phraseRaw');
+const llmOutput     = document.getElementById('llmOutput');
+const llmMeta       = document.getElementById('llmMeta');
+const logEl         = document.getElementById('logEl');
+const camPlaceholder= document.getElementById('camPlaceholder');
+
+function log(msg, type='') {
+  const t   = new Date().toLocaleTimeString('pt-PT');
+  const el  = document.createElement('div');
+  el.style.marginBottom = '2px';
+  if (type === 'ok') el.style.color = 'var(--success)';
+  if (type === 'warn') el.style.color = 'var(--warn)';
+  el.textContent = `> ${msg}`;
+  logEl.prepend(el);
+}
+
+function setBadge(id, ok) {
+  const el = document.getElementById(id);
+  el.classList.toggle('ok', ok);
+}
+
+async function checkHealth() {
+  try {
+    const r    = await fetch(`${API}/health`, { signal: AbortSignal.timeout(2000) });
+    const data = await r.json();
+    setBadge('badgeServer', true);
+    setBadge('badgeLLM',    data.ollama?.available ?? false);
+  } catch {
+    setBadge('badgeServer', false);
+    setBadge('badgeLLM',    false);
+  }
+}
+
+async function initCamera() {
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' }
+    });
+    videoEl.srcObject = stream;
+    camPlaceholder.style.display = 'none';
+    setBadge('badgeCam', true);
+    log('Visão computacional ativa', 'ok');
+    startCapture();
+  } catch (e) {
+    setBadge('badgeCam', false);
+    log('Erro ao aceder à câmara', 'warn');
+  }
+}
+
+const offscreenCanvas = document.createElement('canvas');
+const offscreenCtx   = offscreenCanvas.getContext('2d');
+
+function grabFrameBase64() {
+  if (!videoEl.videoWidth) return null;
+  offscreenCanvas.width  = videoEl.videoWidth;
+  offscreenCanvas.height = videoEl.videoHeight;
+  offscreenCtx.drawImage(videoEl, 0, 0);
+  return offscreenCanvas.toDataURL('image/jpeg', 0.7).split(',')[1];
+}
+
+async function sendFrame() {
+  if (!capturing || !stream) return;
+  const b64 = grabFrameBase64();
+  if (!b64) return;
+  try {
+    const r = await fetch(`${API}/predict`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ frame: b64 }),
+      signal: AbortSignal.timeout(1500)
+    });
+    const data = await r.json();
+    handlePrediction(data);
+  } catch {}
+}
+
+function handlePrediction(data) {
+  if (data.annotated_frame) {
+    annotatedImg.src = `data:image/jpeg;base64,${data.annotated_frame}`;
+    annotatedImg.classList.add('visible');
+  }
+
+  const letter = data.letter;
+  const conf   = data.confidence || 0;
+  confidenceBar.style.width = `${Math.round(conf * 100)}%`;
+
+  if (!data.hand_detected || !letter || letter === 'nothing') {
+    letterDisplay.textContent = '—';
+    letterDisplay.className   = 'no-hand';
+    consecutiveHold = 0;
+    autoAdded = false;
+    currentLetter = null;
+    return;
+  }
+
+  letterDisplay.textContent = letter === 'space' ? '␣' : letter;
+  letterDisplay.className   = '';
+
+  if (letter === lastLetter && conf >= CONFIDENCE_THRESHOLD) {
+    consecutiveHold++;
+    if (consecutiveHold >= CONFIRM_HOLD_FRAMES && !autoAdded) {
+      autoAdded = true;
+      if (letter === 'space') addSpace();
+      else if (letter === 'del') deleteLastLetter();
+      else pushLetter(letter.toUpperCase());
+    }
+  } else {
+    consecutiveHold = 0;
+    autoAdded = false;
+    lastLetter = letter;
+  }
+  currentLetter = letter;
+}
+
+function startCapture() { captureTimer = setInterval(sendFrame, CAPTURE_INTERVAL_MS); }
+
+function toggleCapture() {
+  capturing = !capturing;
+  const btn = document.getElementById('btnCapture');
+  const icon = document.getElementById('pauseIcon');
+  if (capturing) {
+    btn.classList.remove('active');
+    icon.className = 'ph-bold ph-pause';
+    log('Captura retomada');
+  } else {
+    btn.classList.add('active');
+    icon.className = 'ph-bold ph-play';
+    annotatedImg.classList.remove('visible');
+    log('Captura pausada');
+  }
+}
+
+function renderQueue() {
+  if (letterQueue.length === 0) {
+    queueDisplay.innerHTML = '<span class="phrase-empty">Aguardando deteção...</span>';
+    phraseRaw.innerHTML = '<span class="phrase-empty">As letras aparecerão aqui...</span>';
+    document.getElementById('btnCorrect').disabled = true;
+    return;
+  }
+
+  queueDisplay.innerHTML = '';
+  letterQueue.forEach(ch => {
+    const el = document.createElement('span');
+    el.className = ch === ' ' ? 'char-chip space' : 'char-chip';
+    el.textContent = ch === ' ' ? 'SPACE' : ch;
+    queueDisplay.appendChild(el);
+  });
+
+  const phrase = letterQueue.join('');
+  phraseRaw.textContent = phrase;
+  document.getElementById('btnCorrect').disabled = false;
+}
+
+function pushLetter(ch) { letterQueue.push(ch); renderQueue(); }
+function addSpace() { letterQueue.push(' '); renderQueue(); }
+function confirmLetter() {
+  if (currentLetter && currentLetter !== 'nothing') {
+    pushLetter(currentLetter === 'space' ? ' ' : currentLetter.toUpperCase());
+    log(`Confirmado: ${currentLetter.toUpperCase()}`, 'ok');
+  }
+}
+function deleteLastLetter() { if (letterQueue.length > 0) { letterQueue.pop(); renderQueue(); resetLLM(); } }
+function clearAll() { letterQueue = []; renderQueue(); resetLLM(); log('Sessão limpa'); }
+
+function resetLLM() {
+  llmOutput.innerHTML = '<span class="phrase-empty">Aguardando processamento...</span>';
+  llmMeta.textContent = '';
+  correctedPhrase = '';
+  document.getElementById('btnSpeak').disabled = true;
+}
+
+async function correctPhrase() {
+  const phrase = letterQueue.join('').trim();
+  if (!phrase) return;
+  llmOutput.textContent = 'A interpretar contexto...';
+  try {
+    const r = await fetch(`${API}/llm_correct`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phrase }),
+      signal: AbortSignal.timeout(45000)
+    });
+    const data = await r.json();
+    correctedPhrase = data.corrected || phrase;
+    llmOutput.textContent = correctedPhrase;
+    llmMeta.textContent = `AI Engine: ${data.model_used}`;
+    document.getElementById('btnSpeak').disabled = false;
+  } catch (e) {
+    llmOutput.textContent = phrase;
+    document.getElementById('btnSpeak').disabled = false;
+  }
+}
+
+async function speakPhrase() {
+  const text = correctedPhrase || letterQueue.join('').trim();
+  if (!text) return;
+  try {
+    await fetch(`${API}/speak`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text })
+    });
+  } catch (e) { log('Erro na síntese de voz', 'warn'); }
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key.toLowerCase() === 'a') confirmLetter();
+  if (e.key.toLowerCase() === 's') addSpace();
+  if (e.key === 'Backspace') deleteLastLetter();
+  if (e.key === 'Enter') correctPhrase();
+  if (e.key.toLowerCase() === 'p') toggleCapture();
+  if (e.key.toLowerCase() === 'v') speakPhrase();
+});
+
+(async () => {
+  await checkHealth();
+  await initCamera();
+  setInterval(checkHealth, 10000);
+})();
+</script>
+</body>
+</html>
