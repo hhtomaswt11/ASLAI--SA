@@ -1,2 +1,9 @@
 TrabalhoPratico/asl/
 TrabalhoPratico/outputs/train_landmarks.csv
+TrabalhoPratico/aslai1/
+TrabalhoPratico/aslai_server/
+TrabalhoPratico/aslai_server311/
+TrabalhoPratico/.ipynb_checkpoints/
+**/__pycache__/
+*.pyc
+TrabalhoPratico/outputs_dynamic/

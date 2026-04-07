@@ -396,6 +396,7 @@
             <div class="badge" id="badgeServer"><i class="ph-fill ph-circle"></i> Engine</div>
             <div class="badge" id="badgeLLM"><i class="ph-fill ph-circle"></i> Inteligência</div>
             <div class="badge" id="badgeCam"><i class="ph-fill ph-circle"></i> Vision</div>
+            <div class="badge" id="badgeDynamic"><i class="ph-fill ph-circle"></i> LSTM</div>
         </div>
     </header>
 
@@ -412,7 +413,29 @@
                     </div>
                 </div>
 
+                <!-- Mode toggle pill -->
+                <div style="position:absolute;top:24px;right:24px;display:flex;gap:8px;pointer-events:auto;">
+                    <button id="btnModeStatic" onclick="setMode('static')"
+                        style="padding:7px 16px;border-radius:99px;border:1px solid var(--accent);background:var(--accent);color:#241800;font-size:0.75rem;font-weight:600;cursor:pointer;">
+                        <i class="ph-bold ph-hand"></i> Estático
+                    </button>
+                    <button id="btnModeDynamic" onclick="setMode('dynamic')"
+                        style="padding:7px 16px;border-radius:99px;border:1px solid var(--border);background:var(--surface);color:var(--muted);font-size:0.75rem;font-weight:600;cursor:pointer;">
+                        <i class="ph-bold ph-film-strip"></i> Dinâmico
+                    </button>
+                </div>
+
+                <!-- Dynamic recording indicator -->
+                <div id="dynRecordingBanner" style="display:none;position:absolute;top:80px;left:50%;transform:translateX(-50%);
+                    background:rgba(220,38,38,0.85);backdrop-filter:blur(8px);padding:8px 20px;border-radius:99px;
+                    font-size:0.8rem;font-weight:600;color:#fff;pointer-events:none;z-index:10;">
+                    <i class="ph-fill ph-record" style="color:#fca5a5;"></i> A GRAVAR... soltar <kbd style="background:rgba(255,255,255,0.2);padding:1px 5px;border-radius:4px;">R</kbd>
+                </div>
+
                 <div class="viewport-controls">
+                    <button class="icon-btn" id="btnRecord" onclick="toggleDynamicRecord()" title="Gravar Gesto Dinâmico (R)" style="display:none;">
+                        <i class="ph-bold ph-record" id="recordIcon" style="color:#f87171;"></i>
+                    </button>
                     <button class="icon-btn active" id="btnCapture" onclick="toggleCapture()" title="Pausar/Play (P)">
                         <i class="ph-bold ph-pause" id="pauseIcon"></i>
                     </button>
@@ -433,7 +456,20 @@
 
         <section class="side-panel">
             
-            <div class="glass-panel">
+            <!-- Dynamic result panel (hidden in static mode) -->
+            <div class="glass-panel" id="dynPanel" style="display:none;border-color:rgba(248,113,113,0.35);">
+                <div class="panel-label"><i class="ph-bold ph-film-strip"></i> Resultado Dinâmico</div>
+                <div id="dynWordDisplay" style="font-family:var(--font-mono);font-size:2.2rem;font-weight:700;
+                    color:var(--accent);text-align:center;padding:10px 0;letter-spacing:0.05em;">—</div>
+                <div id="dynConfidenceText" style="font-size:0.72rem;color:var(--muted);text-align:center;margin-bottom:8px;"></div>
+                <div id="dynTop5" style="font-size:0.72rem;color:var(--muted);font-family:var(--font-mono);"></div>
+                <div class="btn-group" style="margin-top:10px;">
+                    <button class="action-btn" onclick="addDynWordToPhrase()"><i class="ph ph-plus"></i> Adicionar</button>
+                    <button class="action-btn" onclick="clearAll()"><i class="ph ph-trash"></i> Limpar</button>
+                </div>
+            </div>
+
+            <div class="glass-panel" id="staticPanel">
                 <div class="panel-label"><i class="ph-bold ph-stack"></i> Sequência de Gestos</div>
                 <div class="queue-container" id="queueDisplay">
                     <span class="phrase-empty">Aguardando deteção...</span>
@@ -443,6 +479,7 @@
                     <button class="action-btn" onclick="clearAll()"><i class="ph ph-trash"></i> Limpar</button>
                 </div>
             </div>
+            </div><!-- /staticPanel -->
 
             <div class="glass-panel">
                 <div class="panel-label"><i class="ph-bold ph-text-t"></i> Frase Capturada</div>
@@ -472,6 +509,8 @@
                     <span><kbd>S</kbd> Espaço</span>
                     <span><kbd>Ent</kbd> Corrigir</span>
                     <span><kbd>P</kbd> Pause</span>
+                    <span><kbd>R</kbd> Gravar</span>
+                    <span><kbd>M</kbd> Modo</span>
                 </div>
                 <hr style="border: 0; border-top: 1px solid var(--border); margin: 15px 0;">
                 <div class="log-viewport" id="logEl"></div>
@@ -482,42 +521,64 @@
 
     <footer style="padding: 10px 40px; font-size: 0.65rem; color: var(--muted); display: flex; justify-content: space-between; border-top: 1px solid var(--border);">
         <span>UMinho · Mestrado em IA · Sensorização e Ambiente · Grupo 12</span>
-        <span>Tecnologia: MediaPipe + MLP + Ollama</span>
+        <span>Tecnologia: MediaPipe + MLP + LSTM + Ollama</span>
     </footer>
 
+
 <script>
-// LÓGICA ORIGINAL INTACTA
+// ═══════════════════════════════════════════════════════════════════
+// ASLAI — Lógica completa: Estático (MLP) + Dinâmico (LSTM)
+// ═══════════════════════════════════════════════════════════════════
+
 const API = 'http://localhost:5000/api';
+
+// ── Constantes estáticas ───────────────────────────────────────────
 const CAPTURE_INTERVAL_MS  = 200;
 const CONFIRM_HOLD_FRAMES  = 8;
 const CONFIDENCE_THRESHOLD = 0.75;
 
+// ── Constantes dinâmicas ───────────────────────────────────────────
+const DYN_CAPTURE_INTERVAL_MS = 100;   // frame rate durante gravação (~10 fps)
+const DYN_MIN_FRAMES          = 10;    // mínimo de frames para enviar
+const DYN_MAX_FRAMES          = 60;    // máximo de frames (6 s a 10 fps)
+const DYN_CONFIDENCE_THRESHOLD = 0.35; // LSTM é menos confiante — threshold mais baixo
+
+// ── Estado global ──────────────────────────────────────────────────
 let capturing       = true;
 let stream          = null;
 let captureTimer    = null;
 let lastLetter      = null;
 let consecutiveHold = 0;
 let autoAdded       = false;
-let letterQueue = [];
-let currentLetter = null;
+let letterQueue     = [];
+let currentLetter   = null;
 let correctedPhrase = '';
 
-const videoEl       = document.getElementById('videoEl');
-const annotatedImg  = document.getElementById('annotatedImg');
-const letterDisplay = document.getElementById('letterDisplay');
-const confidenceBar = document.getElementById('confidenceBar');
-const queueDisplay  = document.getElementById('queueDisplay');
-const phraseRaw     = document.getElementById('phraseRaw');
-const llmOutput     = document.getElementById('llmOutput');
-const llmMeta       = document.getElementById('llmMeta');
-const logEl         = document.getElementById('logEl');
-const camPlaceholder= document.getElementById('camPlaceholder');
+// ── Estado do modo ─────────────────────────────────────────────────
+let currentMode       = 'static';   // 'static' | 'dynamic'
+let isRecording       = false;
+let dynFrameBuffer    = [];
+let dynCaptureTimer   = null;
+let dynLastWord       = null;
+let dynamicAvailable  = false;      // atualizado pelo health check
 
-function log(msg, type='') {
-  const t   = new Date().toLocaleTimeString('pt-PT');
-  const el  = document.createElement('div');
+// ── Referências DOM ────────────────────────────────────────────────
+const videoEl        = document.getElementById('videoEl');
+const annotatedImg   = document.getElementById('annotatedImg');
+const letterDisplay  = document.getElementById('letterDisplay');
+const confidenceBar  = document.getElementById('confidenceBar');
+const queueDisplay   = document.getElementById('queueDisplay');
+const phraseRaw      = document.getElementById('phraseRaw');
+const llmOutput      = document.getElementById('llmOutput');
+const llmMeta        = document.getElementById('llmMeta');
+const logEl          = document.getElementById('logEl');
+const camPlaceholder = document.getElementById('camPlaceholder');
+
+// ── Utilitários ────────────────────────────────────────────────────
+function log(msg, type = '') {
+  const el = document.createElement('div');
   el.style.marginBottom = '2px';
-  if (type === 'ok') el.style.color = 'var(--success)';
+  if (type === 'ok')   el.style.color = 'var(--success)';
   if (type === 'warn') el.style.color = 'var(--warn)';
   el.textContent = `> ${msg}`;
   logEl.prepend(el);
@@ -525,21 +586,36 @@ function log(msg, type='') {
 
 function setBadge(id, ok) {
   const el = document.getElementById(id);
-  el.classList.toggle('ok', ok);
+  if (el) el.classList.toggle('ok', ok);
 }
 
+// ── Health check ───────────────────────────────────────────────────
 async function checkHealth() {
   try {
     const r    = await fetch(`${API}/health`, { signal: AbortSignal.timeout(2000) });
     const data = await r.json();
     setBadge('badgeServer', true);
     setBadge('badgeLLM',    data.ollama?.available ?? false);
+
+    // Verificar se o modelo dinâmico está carregado
+    dynamicAvailable = data.dynamic_model?.loaded ?? false;
+    setBadge('badgeDynamic', dynamicAvailable);
+
+    if (!dynamicAvailable) {
+      const btn = document.getElementById('btnModeDynamic');
+      if (btn) {
+        btn.title = 'LSTM não carregado — corre Grupo12_4D primeiro';
+        btn.style.opacity = '0.45';
+      }
+    }
   } catch {
     setBadge('badgeServer', false);
     setBadge('badgeLLM',    false);
+    setBadge('badgeDynamic', false);
   }
 }
 
+// ── Câmara ────────────────────────────────────────────────────────
 async function initCamera() {
   try {
     stream = await navigator.mediaDevices.getUserMedia({
@@ -556,19 +632,24 @@ async function initCamera() {
   }
 }
 
+// ── Canvas offscreen partilhado ────────────────────────────────────
 const offscreenCanvas = document.createElement('canvas');
-const offscreenCtx   = offscreenCanvas.getContext('2d');
+const offscreenCtx    = offscreenCanvas.getContext('2d');
 
-function grabFrameBase64() {
+function grabFrameBase64(quality = 0.7) {
   if (!videoEl.videoWidth) return null;
   offscreenCanvas.width  = videoEl.videoWidth;
   offscreenCanvas.height = videoEl.videoHeight;
   offscreenCtx.drawImage(videoEl, 0, 0);
-  return offscreenCanvas.toDataURL('image/jpeg', 0.7).split(',')[1];
+  return offscreenCanvas.toDataURL('image/jpeg', quality).split(',')[1];
 }
 
+// ═══════════════════════════════════════════════════════════════════
+// MODO ESTÁTICO — lógica original intacta
+// ═══════════════════════════════════════════════════════════════════
+
 async function sendFrame() {
-  if (!capturing || !stream) return;
+  if (!capturing || !stream || currentMode !== 'static') return;
   const b64 = grabFrameBase64();
   if (!b64) return;
   try {
@@ -609,7 +690,7 @@ function handlePrediction(data) {
     consecutiveHold++;
     if (consecutiveHold >= CONFIRM_HOLD_FRAMES && !autoAdded) {
       autoAdded = true;
-      if (letter === 'space') addSpace();
+      if (letter === 'space')    addSpace();
       else if (letter === 'del') deleteLastLetter();
       else pushLetter(letter.toUpperCase());
     }
@@ -621,11 +702,13 @@ function handlePrediction(data) {
   currentLetter = letter;
 }
 
-function startCapture() { captureTimer = setInterval(sendFrame, CAPTURE_INTERVAL_MS); }
+function startCapture() {
+  captureTimer = setInterval(sendFrame, CAPTURE_INTERVAL_MS);
+}
 
 function toggleCapture() {
   capturing = !capturing;
-  const btn = document.getElementById('btnCapture');
+  const btn  = document.getElementById('btnCapture');
   const icon = document.getElementById('pauseIcon');
   if (capturing) {
     btn.classList.remove('active');
@@ -639,10 +722,221 @@ function toggleCapture() {
   }
 }
 
+// ═══════════════════════════════════════════════════════════════════
+// MODO DINÂMICO — gravação de sequência → LSTM
+// ═══════════════════════════════════════════════════════════════════
+
+function toggleDynamicRecord() {
+  if (currentMode !== 'dynamic') {
+    setMode('dynamic');
+    return;
+  }
+  if (isRecording) {
+    stopDynamicRecord();
+  } else {
+    startDynamicRecord();
+  }
+}
+
+function startDynamicRecord() {
+  if (!dynamicAvailable) {
+    log('Modelo dinâmico não disponível', 'warn');
+    return;
+  }
+
+  isRecording    = true;
+  dynFrameBuffer = [];
+
+  // UI feedback
+  const btn  = document.getElementById('btnRecord');
+  const icon = document.getElementById('recordIcon');
+  if (btn) { btn.style.background = '#dc2626'; btn.style.color = '#fff'; }
+  if (icon) icon.style.color = '#fff';
+  const banner = document.getElementById('dynRecordingBanner');
+  if (banner) banner.style.display = 'block';
+
+  // Reset display
+  document.getElementById('dynWordDisplay').textContent = '⏺';
+  document.getElementById('dynConfidenceText').textContent = 'A capturar gesto...';
+  document.getElementById('dynTop5').innerHTML = '';
+
+  log('⏺ A gravar gesto dinâmico...', 'warn');
+
+  // Capturar frames a ~10 fps
+  dynCaptureTimer = setInterval(() => {
+    const b64 = grabFrameBase64(0.6);   // qualidade um pouco menor para velocidade
+    if (b64) dynFrameBuffer.push(b64);
+
+    // Auto-stop se atingir o máximo
+    if (dynFrameBuffer.length >= DYN_MAX_FRAMES) {
+      stopDynamicRecord();
+    }
+  }, DYN_CAPTURE_INTERVAL_MS);
+}
+
+async function stopDynamicRecord() {
+  if (!isRecording) return;
+  isRecording = false;
+
+  clearInterval(dynCaptureTimer);
+  dynCaptureTimer = null;
+
+  // UI feedback
+  const btn  = document.getElementById('btnRecord');
+  const icon = document.getElementById('recordIcon');
+  if (btn) { btn.style.background = ''; btn.style.color = ''; }
+  if (icon) icon.style.color = '#f87171';
+  const banner = document.getElementById('dynRecordingBanner');
+  if (banner) banner.style.display = 'none';
+
+  const nFrames = dynFrameBuffer.length;
+  log(`⏹ Gravação parada (${nFrames} frames)`, 'ok');
+
+  if (nFrames < DYN_MIN_FRAMES) {
+    log(`Poucas frames (${nFrames} < ${DYN_MIN_FRAMES}) — tenta manter o gesto mais tempo`, 'warn');
+    document.getElementById('dynWordDisplay').textContent = '?';
+    document.getElementById('dynConfidenceText').textContent = 'Frames insuficientes — grava novamente';
+    return;
+  }
+
+  // Enviar para o servidor
+  document.getElementById('dynWordDisplay').textContent = '⏳';
+  document.getElementById('dynConfidenceText').textContent = 'A classificar...';
+
+  try {
+    const r = await fetch(`${API}/predict_dynamic`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ frames: dynFrameBuffer }),
+      signal: AbortSignal.timeout(30000)
+    });
+    const data = await r.json();
+    handleDynamicResult(data);
+  } catch (e) {
+    log('Erro na predição dinâmica: ' + e.message, 'warn');
+    document.getElementById('dynWordDisplay').textContent = '✕';
+    document.getElementById('dynConfidenceText').textContent = 'Erro de ligação';
+  }
+
+  dynFrameBuffer = [];
+}
+
+function handleDynamicResult(data) {
+  if (!data.dynamic_available) {
+    log('Modelo LSTM não disponível no servidor', 'warn');
+    return;
+  }
+
+  const word = data.word;
+  const conf = data.confidence || 0;
+
+  if (data.annotated_frame) {
+    annotatedImg.src = `data:image/jpeg;base64,${data.annotated_frame}`;
+    annotatedImg.classList.add('visible');
+  }
+
+  if (!word) {
+    document.getElementById('dynWordDisplay').textContent = '?';
+    document.getElementById('dynConfidenceText').textContent = 'Gesto não reconhecido';
+    return;
+  }
+
+  dynLastWord = word;
+
+  document.getElementById('dynWordDisplay').textContent = word.toUpperCase();
+  document.getElementById('dynConfidenceText').textContent =
+    `Confiança: ${Math.round(conf * 100)}%` +
+    (conf < DYN_CONFIDENCE_THRESHOLD ? ' ⚠️ baixa' : ' ✓');
+
+  // Top-5
+  const top5El = document.getElementById('dynTop5');
+  if (data.top5 && data.top5.length > 0) {
+    top5El.innerHTML = data.top5
+      .map((t, i) => `<div style="padding:1px 0;${i===0?'color:var(--accent);font-weight:600;':''}">
+        ${i + 1}. ${t.word} <span style="float:right">${Math.round(t.confidence * 100)}%</span>
+      </div>`)
+      .join('');
+  }
+
+  log(`Gesto reconhecido: ${word.toUpperCase()} (${Math.round(conf * 100)}%)`,
+      conf >= DYN_CONFIDENCE_THRESHOLD ? 'ok' : 'warn');
+}
+
+function addDynWordToPhrase() {
+  if (!dynLastWord) { log('Nenhum gesto para adicionar', 'warn'); return; }
+  // Adicionar como token com espaço antes se necessário
+  if (letterQueue.length > 0 && letterQueue[letterQueue.length - 1] !== ' ') {
+    letterQueue.push(' ');
+  }
+  // Adicionar cada letra da palavra
+  for (const ch of dynLastWord.toUpperCase()) {
+    letterQueue.push(ch);
+  }
+  renderQueue();
+  log(`"${dynLastWord}" adicionado à frase`, 'ok');
+  dynLastWord = null;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// GESTÃO DO MODO
+// ═══════════════════════════════════════════════════════════════════
+
+function setMode(mode) {
+  currentMode = mode;
+
+  const btnStatic  = document.getElementById('btnModeStatic');
+  const btnDynamic = document.getElementById('btnModeDynamic');
+  const btnRecord  = document.getElementById('btnRecord');
+  const staticPanel = document.getElementById('staticPanel');
+  const dynPanel    = document.getElementById('dynPanel');
+
+  const activeStyle   = 'background:var(--accent);color:#241800;border-color:var(--accent);';
+  const inactiveStyle = 'background:var(--surface);color:var(--muted);border-color:var(--border);';
+
+  if (mode === 'static') {
+    if (btnStatic)  btnStatic.style.cssText  = activeStyle;
+    if (btnDynamic) btnDynamic.style.cssText = inactiveStyle;
+    if (btnRecord)  btnRecord.style.display  = 'none';
+    if (staticPanel) staticPanel.style.display = '';
+    if (dynPanel)    dynPanel.style.display    = 'none';
+
+    // Parar gravação se estava a gravar
+    if (isRecording) stopDynamicRecord();
+
+    letterDisplay.textContent = '—';
+    letterDisplay.className   = 'no-hand';
+    log('Modo Estático — reconhecimento letra a letra');
+
+  } else {
+    if (btnStatic)  btnStatic.style.cssText  = inactiveStyle;
+    if (btnDynamic) {
+      if (dynamicAvailable) {
+        btnDynamic.style.cssText = activeStyle;
+      } else {
+        btnDynamic.style.cssText = inactiveStyle + 'opacity:0.5;';
+        log('⚠️ Modelo LSTM não disponível. Corre o Grupo12_4D primeiro.', 'warn');
+        currentMode = 'static';
+        return;
+      }
+    }
+    if (btnRecord)  btnRecord.style.display  = '';
+    if (staticPanel) staticPanel.style.display = 'none';
+    if (dynPanel)    dynPanel.style.display    = '';
+
+    letterDisplay.textContent = '●';
+    letterDisplay.className   = '';
+    log('Modo Dinâmico — prime R para gravar um gesto de palavra completa');
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// QUEUE / FRASE — lógica original intacta
+// ═══════════════════════════════════════════════════════════════════
+
 function renderQueue() {
   if (letterQueue.length === 0) {
     queueDisplay.innerHTML = '<span class="phrase-empty">Aguardando deteção...</span>';
-    phraseRaw.innerHTML = '<span class="phrase-empty">As letras aparecerão aqui...</span>';
+    phraseRaw.innerHTML    = '<span class="phrase-empty">As letras aparecerão aqui...</span>';
     document.getElementById('btnCorrect').disabled = true;
     return;
   }
@@ -650,33 +944,51 @@ function renderQueue() {
   queueDisplay.innerHTML = '';
   letterQueue.forEach(ch => {
     const el = document.createElement('span');
-    el.className = ch === ' ' ? 'char-chip space' : 'char-chip';
-    el.textContent = ch === ' ' ? 'SPACE' : ch;
+    el.className    = ch === ' ' ? 'char-chip space' : 'char-chip';
+    el.textContent  = ch === ' ' ? 'SPACE' : ch;
     queueDisplay.appendChild(el);
   });
 
-  const phrase = letterQueue.join('');
-  phraseRaw.textContent = phrase;
+  phraseRaw.textContent = letterQueue.join('');
   document.getElementById('btnCorrect').disabled = false;
 }
 
-function pushLetter(ch) { letterQueue.push(ch); renderQueue(); }
-function addSpace() { letterQueue.push(' '); renderQueue(); }
+function pushLetter(ch)  { letterQueue.push(ch); renderQueue(); }
+function addSpace()      { letterQueue.push(' '); renderQueue(); }
 function confirmLetter() {
+  if (currentMode === 'dynamic') { toggleDynamicRecord(); return; }
   if (currentLetter && currentLetter !== 'nothing') {
     pushLetter(currentLetter === 'space' ? ' ' : currentLetter.toUpperCase());
     log(`Confirmado: ${currentLetter.toUpperCase()}`, 'ok');
   }
 }
-function deleteLastLetter() { if (letterQueue.length > 0) { letterQueue.pop(); renderQueue(); resetLLM(); } }
-function clearAll() { letterQueue = []; renderQueue(); resetLLM(); log('Sessão limpa'); }
+function deleteLastLetter() {
+  if (letterQueue.length > 0) { letterQueue.pop(); renderQueue(); resetLLM(); }
+}
+function clearAll() {
+  letterQueue = [];
+  dynLastWord = null;
+  if (document.getElementById('dynWordDisplay'))
+    document.getElementById('dynWordDisplay').textContent = '—';
+  if (document.getElementById('dynConfidenceText'))
+    document.getElementById('dynConfidenceText').textContent = '';
+  if (document.getElementById('dynTop5'))
+    document.getElementById('dynTop5').innerHTML = '';
+  renderQueue();
+  resetLLM();
+  log('Sessão limpa');
+}
 
 function resetLLM() {
   llmOutput.innerHTML = '<span class="phrase-empty">Aguardando processamento...</span>';
   llmMeta.textContent = '';
-  correctedPhrase = '';
+  correctedPhrase     = '';
   document.getElementById('btnSpeak').disabled = true;
 }
+
+// ═══════════════════════════════════════════════════════════════════
+// LLM CORRECTION + TTS — lógica original intacta
+// ═══════════════════════════════════════════════════════════════════
 
 async function correctPhrase() {
   const phrase = letterQueue.join('').trim();
@@ -690,12 +1002,13 @@ async function correctPhrase() {
       signal: AbortSignal.timeout(45000)
     });
     const data = await r.json();
-    correctedPhrase = data.corrected || phrase;
+    correctedPhrase    = data.corrected || phrase;
     llmOutput.textContent = correctedPhrase;
-    llmMeta.textContent = `AI Engine: ${data.model_used}`;
+    llmMeta.textContent   = data.model_used ? `AI Engine: ${data.model_used}` : `Strategy: ${data.strategy}`;
     document.getElementById('btnSpeak').disabled = false;
   } catch (e) {
     llmOutput.textContent = phrase;
+    correctedPhrase       = phrase;
     document.getElementById('btnSpeak').disabled = false;
   }
 }
@@ -712,14 +1025,24 @@ async function speakPhrase() {
   } catch (e) { log('Erro na síntese de voz', 'warn'); }
 }
 
+// ═══════════════════════════════════════════════════════════════════
+// TECLADO
+// ═══════════════════════════════════════════════════════════════════
+
 document.addEventListener('keydown', e => {
   if (e.key.toLowerCase() === 'a') confirmLetter();
   if (e.key.toLowerCase() === 's') addSpace();
-  if (e.key === 'Backspace') deleteLastLetter();
-  if (e.key === 'Enter') correctPhrase();
+  if (e.key === 'Backspace')        deleteLastLetter();
+  if (e.key === 'Enter')            correctPhrase();
   if (e.key.toLowerCase() === 'p') toggleCapture();
   if (e.key.toLowerCase() === 'v') speakPhrase();
+  if (e.key.toLowerCase() === 'r') toggleDynamicRecord();
+  if (e.key.toLowerCase() === 'm') setMode(currentMode === 'static' ? 'dynamic' : 'static');
 });
+
+// ═══════════════════════════════════════════════════════════════════
+// INICIALIZAÇÃO
+// ═══════════════════════════════════════════════════════════════════
 
 (async () => {
   await checkHealth();
