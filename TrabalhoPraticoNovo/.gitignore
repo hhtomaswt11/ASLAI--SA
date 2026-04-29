@@ -16,3 +16,7 @@ frontend/out/
 
 # OS
 .DS_Store
+
+# Notebooks
+notebooks/*/data
+notebooks/*/output
