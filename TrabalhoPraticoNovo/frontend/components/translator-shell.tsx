@@ -222,7 +222,9 @@ export function TranslatorShell() {
   }
 
   async function speakPhrase() {
-    const text = correctedPhrase ?? phrase;
+    const phraseText = (correctedPhrase ?? phrase).trim();
+    const tokenText = currentPrediction.trim();
+    const text = phraseText || (tokenText && tokenText !== "--" ? tokenText : "");
     if (!text) return;
     try {
       await api.speak(text);

@@ -20,3 +20,4 @@ frontend/out/
 # Notebooks
 notebooks/*/data
 notebooks/*/output
+asl/
