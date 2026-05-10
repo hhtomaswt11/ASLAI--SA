@@ -23,6 +23,7 @@ export function TranslatorShell() {
   const staticFailureCountRef = useRef(0);
 
   const [mode, setMode] = useState<Mode>("static");
+  const modeRef = useRef<Mode>(mode);
   const [isRecording, setIsRecording] = useState(false);
   const [backend, setBackend] = useState<HealthResponse | null>(null);
   const [backendStatus, setBackendStatus] = useState("Offline");
@@ -73,6 +74,7 @@ export function TranslatorShell() {
   }, []);
 
   useEffect(() => {
+    modeRef.current = mode;
     if (mode !== "static") {
       if (captureTimerRef.current) {
         window.clearTimeout(captureTimerRef.current);
@@ -82,7 +84,7 @@ export function TranslatorShell() {
     }
 
     const runStaticPrediction = async () => {
-      if (mode !== "static") return;
+      if (modeRef.current !== "static") return;
 
       if (staticRequestInFlightRef.current) {
         captureTimerRef.current = window.setTimeout(runStaticPrediction, 300);
@@ -99,10 +101,13 @@ export function TranslatorShell() {
 
       try {
         const result = await api.predictStatic(frame);
-        setCurrentPrediction(
-          result.letter ?? (result.hand_detected ? "?" : "--"),
-        );
-        setConfidence(result.confidence);
+        // Only apply static prediction if the UI is still in static mode
+        if (modeRef.current === "static") {
+          setCurrentPrediction(
+            result.letter ?? (result.hand_detected ? "?" : "--"),
+          );
+          setConfidence(result.confidence);
+        }
         staticFailureCountRef.current = 0;
       } catch {
         setBackendStatus("Offline");
