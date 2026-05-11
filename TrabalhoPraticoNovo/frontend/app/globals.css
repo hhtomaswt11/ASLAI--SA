@@ -5,24 +5,46 @@
 @tailwind utilities;
 
 :root {
-  color-scheme: dark;
+  --asl-bg: #fdfbf7;
+  --asl-surface: #ffffff;
+  --asl-panel: rgba(255, 255, 255, 0.82);
+  --asl-border: rgba(211, 155, 0, 0.15);
+  --asl-accent: #d39b00;
+  --asl-text: #1a1204;
+  --asl-muted: #7c6f44;
+  --asl-warn: #f97316;
+  --asl-success: #10b981;
+}
+
+.dark {
+  --asl-bg: #181103;
+  --asl-surface: #2b2007;
+  --asl-panel: rgba(43, 32, 7, 0.76);
+  --asl-border: rgba(255, 194, 15, 0.16);
+  --asl-accent: #ffc20f;
+  --asl-text: #fff7df;
+  --asl-muted: #cfb97b;
+  --asl-warn: #f97316;
+  --asl-success: #d39b00;
 }
 
 body {
   min-height: 100vh;
-  background:
+  background-color: var(--asl-bg);
+  background-image: 
     radial-gradient(
       circle at top left,
-      rgba(255, 194, 15, 0.16),
-      transparent 28%
+      rgba(255, 194, 15, 0.1),
+      transparent 35%
     ),
     radial-gradient(
       circle at bottom right,
-      rgba(211, 155, 0, 0.18),
-      transparent 24%
-    ),
-    #181103;
+      rgba(211, 155, 0, 0.12),
+      transparent 30%
+    );
+  color: var(--asl-text);
   font-family: "Space Grotesk", sans-serif;
+  transition: background-color 0.3s ease, color 0.3s ease;
 }
 
 * {

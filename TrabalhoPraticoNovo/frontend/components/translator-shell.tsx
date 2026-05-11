@@ -25,12 +25,22 @@ export function TranslatorShell() {
   const [mode, setMode] = useState<Mode>("static");
   const modeRef = useRef<Mode>(mode);
   const [isRecording, setIsRecording] = useState(false);
+  const [theme, setTheme] = useState<"light" | "dark">("dark");
   const [backend, setBackend] = useState<HealthResponse | null>(null);
   const [backendStatus, setBackendStatus] = useState("Offline");
   const [currentPrediction, setCurrentPrediction] = useState("--");
   const [confidence, setConfidence] = useState(0);
   const [phrase, setPhrase] = useState("");
   const [correctedPhrase, setCorrectedPhrase] = useState<string | null>(null);
+
+  // Apply theme class to html element
+  useEffect(() => {
+    if (theme === "dark") {
+      document.documentElement.classList.add("dark");
+    } else {
+      document.documentElement.classList.remove("dark");
+    }
+  }, [theme]);
 
   useEffect(() => {
     let mounted = true;
@@ -162,6 +172,10 @@ export function TranslatorShell() {
     return canvas.toDataURL("image/jpeg", 0.8).split(",")[1] ?? null;
   }
 
+  function toggleTheme() {
+    setTheme((prev) => (prev === "dark" ? "light" : "dark"));
+  }
+
   function toggleMode() {
     setMode((current) => (current === "static" ? "dynamic" : "static"));
     setCurrentPrediction("--");
@@ -240,20 +254,27 @@ export function TranslatorShell() {
 
   return (
     <main className="mx-auto flex min-h-screen max-w-[1500px] flex-col px-6 py-8 lg:px-10">
-      <header className="mb-6 flex flex-col justify-between gap-6 rounded-[28px] border border-asl-border bg-[rgba(24,17,3,0.82)] px-6 py-5 backdrop-blur-xl lg:flex-row lg:items-center">
+      <header className="mb-6 flex flex-col justify-between gap-6 rounded-[28px] border border-asl-border bg-asl-panel px-6 py-5 backdrop-blur-xl lg:flex-row lg:items-center">
         <div>
-          <p className="text-sm uppercase tracking-[0.45em] text-asl-muted">
+          <p className="text-sm uppercase tracking-[0.45em] text-[#cfb97b]">
             ASLAI
           </p>
           <h1 className="mt-3 text-3xl font-bold text-asl-text">
-            Tradutor de Lingua Gestual Americana em tempo real
+            Tradutor de Lingua Gestual Americana
           </h1>
         </div>
-        <div className="flex flex-wrap gap-3">
-          <div className="rounded-full border border-asl-border px-4 py-2 text-sm text-asl-text">
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            onClick={toggleTheme}
+            className="flex h-10 w-10 items-center justify-center rounded-full border border-asl-border text-asl-text shadow-sm transition hover:bg-asl-accent hover:text-black"
+            title="Alternar tema"
+          >
+            {theme === "dark" ? "☀️" : "🌙"}
+          </button>
+          <div className="rounded-full border border-asl-border px-4 py-2 text-sm text-asl-text shadow-sm bg-asl-surface/30">
             API: {backend ? "Ligada" : "A validar"}
           </div>
-          <div className="rounded-full border border-asl-border px-4 py-2 text-sm text-asl-text">
+          <div className="rounded-full border border-asl-border px-4 py-2 text-sm text-asl-text shadow-sm bg-asl-surface/30">
             Modelos:{" "}
             {backend?.static_model_loaded ? "Estático" : "Sem estático"} /{" "}
             {backend?.dynamic_model_loaded ? "Dinâmico" : "Sem dinâmico"}

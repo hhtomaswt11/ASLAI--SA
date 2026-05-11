@@ -23,7 +23,7 @@ export function OutputPanel({
 }: OutputPanelProps) {
   return (
     <aside className="flex h-full flex-col gap-5">
-      <section className="rounded-[20px] border border-asl-border bg-[rgba(43,32,7,0.76)] p-5 backdrop-blur-xl">
+      <section className="rounded-[20px] border border-asl-border bg-asl-panel p-5 backdrop-blur-xl">
         <p className="text-xs uppercase tracking-[0.3em] text-asl-muted">
           Estado do backend
         </p>
@@ -35,7 +35,7 @@ export function OutputPanel({
         </div>
       </section>
 
-      <section className="rounded-[20px] border border-asl-border bg-[rgba(43,32,7,0.76)] p-5 backdrop-blur-xl">
+      <section className="rounded-[20px] border border-asl-border bg-asl-panel p-5 backdrop-blur-xl">
         <p className="text-xs uppercase tracking-[0.3em] text-asl-muted">
           Composicao
         </p>
@@ -49,28 +49,28 @@ export function OutputPanel({
           <button
             type="button"
             onClick={onAddPrediction}
-            className="rounded-full bg-asl-accent px-4 py-2 text-sm font-semibold text-[#241800]"
+            className="rounded-full bg-asl-accent px-6 py-2.5 text-sm font-bold text-white dark:text-[#241800] shadow-sm transition-all active:scale-95 hover:brightness-110"
           >
             Adicionar
           </button>
           <button
             type="button"
             onClick={onRemoveLast}
-            className="rounded-full border border-asl-border px-4 py-2 text-sm text-asl-text"
+            className="rounded-full border border-asl-border bg-asl-surface px-6 py-2.5 text-sm font-medium text-asl-text shadow-sm transition-all active:scale-95 hover:border-asl-accent"
           >
-            Apagar ultimo
+            Apagar último
           </button>
           <button
             type="button"
             onClick={onClear}
-            className="rounded-full border border-asl-border px-4 py-2 text-sm text-asl-text"
+            className="rounded-full border border-asl-border bg-asl-surface px-6 py-2.5 text-sm font-medium text-asl-text shadow-sm transition-all active:scale-95 hover:border-asl-accent"
           >
             Limpar
           </button>
         </div>
       </section>
 
-      <section className="flex-1 rounded-[20px] border border-asl-border bg-[rgba(43,32,7,0.76)] p-5 backdrop-blur-xl">
+      <section className="flex-1 rounded-[20px] border border-asl-border bg-asl-panel p-5 backdrop-blur-xl">
         <p className="text-xs uppercase tracking-[0.3em] text-asl-muted">
           Frase
         </p>
@@ -82,22 +82,22 @@ export function OutputPanel({
           <button
             type="button"
             onClick={onCorrect}
-            className="rounded-full bg-asl-surface px-4 py-2 text-sm font-medium text-asl-text"
+            className="rounded-full border border-asl-border bg-asl-surface px-6 py-2.5 text-sm font-medium text-asl-text transition-all hover:border-asl-accent hover:bg-asl-accent hover:text-black shadow-sm active:scale-95"
           >
             Corrigir frase
           </button>
           <button
             type="button"
             onClick={onSpeak}
-            className="rounded-full bg-asl-surface px-4 py-2 text-sm font-medium text-asl-text"
+            className="rounded-full border border-asl-border bg-asl-surface px-6 py-2.5 text-sm font-medium text-asl-text transition-all hover:border-asl-accent hover:bg-asl-accent hover:text-black shadow-sm active:scale-95"
           >
             Ler em voz alta
           </button>
         </div>
         <div className="mt-5 rounded-3xl border border-asl-border bg-black/10 p-4">
-          <p className="text-sm text-asl-muted">Versao corrigida</p>
+          <p className="text-sm text-asl-muted">Versão corrigida</p>
           <p className="mt-2 text-base text-asl-text">
-            {correctedPhrase ?? "Sem correcao aplicada."}
+            {correctedPhrase ?? "Sem correção aplicada."}
           </p>
         </div>
       </section>

@@ -9,7 +9,6 @@ joblib==1.5.2
 requests==2.32.5
 httpx==0.28.1
 pillow==11.3.0
-pyttsx3==2.99
-textblob==0.19.0
+edge-tts==7.2.8
 torch==2.1.2
 torchvision==0.16.2

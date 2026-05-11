@@ -1,8 +1,6 @@
-from __future__ import annotations
-
 import logging
-import math
 import threading
+import time
 from typing import Any
 
 import cv2
@@ -10,7 +8,6 @@ import mediapipe as mp
 import numpy as np
 import requests
 import torch
-import torch.nn as nn
 
 from app.core.config import get_settings
 from app.core.model_registry import ModelRegistry
@@ -21,163 +18,6 @@ logger = logging.getLogger(__name__)
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
-class PositionalEncoding(nn.Module):
-    """Positional encoding sinusoidal (Vaswani et al., 2017)."""
-    def __init__(self, d_model: int, max_len: int = 512, dropout: float = 0.1) -> None:
-        super().__init__()
-        self.dropout = nn.Dropout(dropout)
-
-        pe = torch.zeros(max_len, d_model)
-        pos = torch.arange(0, max_len).unsqueeze(1).float()
-        div = torch.exp(torch.arange(0, d_model, 2).float() * (-math.log(10000.0) / d_model))
-        pe[:, 0::2] = torch.sin(pos * div)
-        pe[:, 1::2] = torch.cos(pos * div)
-        pe = pe.unsqueeze(0)  # (1, max_len, d_model)
-        self.register_buffer("pe", pe)
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        # x: (batch, seq_len, d_model)
-        x = x + self.pe[:, :x.size(1)]
-        return self.dropout(x)
-
-
-class ASLTransformerModel(nn.Module):
-    """Transformer Encoder for ASL sign recognition."""
-    def __init__(
-        self,
-        input_dim: int,
-        num_classes: int,
-        d_model: int = 256,
-        nhead: int = 8,
-        num_layers: int = 4,
-        dim_feedforward: int = 512,
-        dropout: float = 0.1,
-        max_len: int = 512,
-    ) -> None:
-        super().__init__()
-
-        self.input_proj = nn.Sequential(
-            nn.Linear(input_dim, d_model),
-            nn.LayerNorm(d_model),
-        )
-
-        self.pos_enc = PositionalEncoding(d_model, max_len=max_len, dropout=dropout)
-
-        encoder_layer = nn.TransformerEncoderLayer(
-            d_model=d_model,
-            nhead=nhead,
-            dim_feedforward=dim_feedforward,
-            dropout=dropout,
-            activation="gelu",
-            batch_first=True,
-            norm_first=True,
-        )
-        self.transformer = nn.TransformerEncoder(
-            encoder_layer,
-            num_layers=num_layers,
-            norm=nn.LayerNorm(d_model),
-        )
-
-        self.cls_token = nn.Parameter(torch.zeros(1, 1, d_model))
-        nn.init.trunc_normal_(self.cls_token, std=0.02)
-
-        self.classifier = nn.Sequential(
-            nn.Linear(d_model, d_model),
-            nn.GELU(),
-            nn.Dropout(dropout),
-            nn.Linear(d_model, num_classes),
-        )
-
-    def forward(self, x: torch.Tensor, pad_mask: torch.Tensor | None = None) -> torch.Tensor:
-        # x: (batch, frames, features)
-        B, T, _ = x.shape
-
-        x = self.input_proj(x)
-        x = self.pos_enc(x)
-
-        cls = self.cls_token.expand(B, -1, -1)
-        x = torch.cat([cls, x], dim=1)
-
-        if pad_mask is not None:
-            cls_mask = torch.zeros(B, 1, dtype=torch.bool, device=x.device)
-            pad_mask = torch.cat([cls_mask, pad_mask], dim=1)
-
-        x = self.transformer(x, src_key_padding_mask=pad_mask)
-        cls_out = x[:, 0]
-
-        return self.classifier(cls_out)
-
-
-class ASLLSTMModel(nn.Module):
-    """BiLSTM baseline for ASL sign recognition."""
-
-    def __init__(
-        self,
-        input_dim: int,
-        num_classes: int,
-        hidden_dim: int = 256,
-        num_layers: int = 2,
-        dropout: float = 0.3,
-        bidirectional: bool = True,
-    ) -> None:
-        super().__init__()
-        self.num_layers = num_layers
-        self.bidirectional = bidirectional
-        self.num_dirs = 2 if bidirectional else 1
-
-        self.input_proj = nn.Sequential(
-            nn.Linear(input_dim, hidden_dim),
-            nn.LayerNorm(hidden_dim),
-            nn.ReLU(),
-            nn.Dropout(dropout),
-        )
-
-        self.lstm = nn.LSTM(
-            input_size=hidden_dim,
-            hidden_size=hidden_dim,
-            num_layers=num_layers,
-            batch_first=True,
-            dropout=dropout if num_layers > 1 else 0.0,
-            bidirectional=bidirectional,
-        )
-
-        lstm_out_dim = hidden_dim * self.num_dirs
-        self.classifier = nn.Sequential(
-            nn.Linear(lstm_out_dim, 512),
-            nn.ReLU(),
-            nn.Dropout(dropout),
-            nn.Linear(512, 512),
-            nn.ReLU(),
-            nn.Dropout(dropout),
-            nn.Linear(512, num_classes),
-        )
-
-    def forward(self, x: torch.Tensor, pad_mask: torch.Tensor | None = None) -> torch.Tensor:
-        x = self.input_proj(x)
-        
-        if pad_mask is not None:
-            # Calculate lengths for packing
-            lengths = (~pad_mask).sum(dim=1).cpu().int()
-            # Ensure lengths are at least 1 to avoid crash
-            lengths = torch.clamp(lengths, min=1)
-            
-            x_packed = nn.utils.rnn.pack_padded_sequence(
-                x, lengths, batch_first=True, enforce_sorted=False
-            )
-            _, (hidden_state, _) = self.lstm(x_packed)
-        else:
-            _, (hidden_state, _) = self.lstm(x)
-
-        if self.bidirectional:
-            # h_n shape: (num_layers * 2, batch, hidden_dim)
-            # Take the last layer's forward and backward states
-            h_fwd = hidden_state[-2]
-            h_bwd = hidden_state[-1]
-            features = torch.cat([h_fwd, h_bwd], dim=-1)
-        else:
-            features = hidden_state[-1]
-
-        return self.classifier(features)
 
 HAND_CONNECTIONS: tuple[tuple[int, int], ...] = (
     (0, 1), (1, 2), (2, 3), (3, 4),
@@ -195,7 +35,7 @@ class InferenceService:
         self.settings = get_settings()
         self._static_detector = self._build_static_detector()
         self._dynamic_pose_detector = self._build_dynamic_pose_detector()
-        self._dynamic_hand_detector = self._build_hand_detector(num_hands=2)
+        self._dynamic_hand_detector = self._build_hand_detector(num_hands=2, video_mode=True)
         self._static_detector_lock = threading.Lock()
         self._dynamic_pose_detector_lock = threading.Lock()
         self._dynamic_hand_detector_lock = threading.Lock()
@@ -251,7 +91,7 @@ class InferenceService:
 
         return self._build_hand_detector(num_hands=1)
 
-    def _build_hand_detector(self, num_hands: int) -> Any | None:
+    def _build_hand_detector(self, num_hands: int, video_mode: bool = False) -> Any | None:
         if not hasattr(mp, "tasks"):
             logger.warning("MediaPipe tasks API unavailable; static detector disabled")
             return None
@@ -264,7 +104,7 @@ class InferenceService:
         try:
             options = mp.tasks.vision.HandLandmarkerOptions(
                 base_options=mp.tasks.BaseOptions(model_asset_path=str(model_path)),
-                running_mode=mp.tasks.vision.RunningMode.IMAGE,
+                running_mode=mp.tasks.vision.RunningMode.VIDEO if video_mode else mp.tasks.vision.RunningMode.IMAGE,
                 num_hands=num_hands,
                 min_hand_detection_confidence=0.5,
                 min_hand_presence_confidence=0.5,
@@ -291,7 +131,7 @@ class InferenceService:
         try:
             options = mp.tasks.vision.PoseLandmarkerOptions(
                 base_options=mp.tasks.BaseOptions(model_asset_path=str(model_path)),
-                running_mode=mp.tasks.vision.RunningMode.IMAGE,
+                running_mode=mp.tasks.vision.RunningMode.VIDEO,
                 num_poses=1,
                 min_pose_detection_confidence=0.5,
                 min_pose_presence_confidence=0.5,
@@ -375,12 +215,24 @@ class InferenceService:
         body_detected = False
         annotated_frame: np.ndarray | None = None
 
-        for frame_b64 in frame_payloads:
-            frame_bgr = decode_base64_frame(frame_b64)
-            vector, frame_has_body, annotated = self._extract_dynamic_vector(frame_bgr)
-            vectors.append(vector)
-            body_detected = body_detected or frame_has_body
-            annotated_frame = annotated
+        # Use a base timestamp for the sequence
+        start_ts_ms = int(time.time() * 1000)
+        
+        for i, frame_b64 in enumerate(frame_payloads):
+            try:
+                frame_bgr = decode_base64_frame(frame_b64)
+                if frame_bgr is None:
+                    continue
+                # Increment timestamp by 33ms (~30fps) for each frame in the sequence
+                ts_ms = start_ts_ms + (i * 33)
+                vector, frame_has_body, annotated = self._extract_dynamic_vector(frame_bgr, timestamp_ms=ts_ms)
+                vectors.append(vector)
+                body_detected = body_detected or frame_has_body
+                annotated_frame = annotated
+            except Exception as e:
+                logger.warning(f"Error processing frame {i} in dynamic sequence: {e}")
+                # Append a zero vector to keep timing consistent if one frame fails
+                vectors.append(np.zeros(225, dtype=np.float32))
 
         # 4. Prepare sequence (crop if too long)
         checkpoint = self.registry.dynamic.classifier
@@ -409,16 +261,28 @@ class InferenceService:
         top_indices = probabilities.argsort()[-top_k:][::-1]
 
         predicted_idx = int(top_indices[0])
-        predicted_word = str(self.registry.dynamic.label_encoder.classes_[predicted_idx])
+        
+        # Robust label lookup
+        classes = self.registry.dynamic.label_encoder.classes_
+        if predicted_idx < len(classes):
+            predicted_word = str(classes[predicted_idx])
+        else:
+            predicted_word = f"Unknown ({predicted_idx})"
+            logger.error(f"Predicted index {predicted_idx} out of bounds for classes (len={len(classes)})")
+            
         confidence = float(probabilities[predicted_idx])
 
-        top_predictions = [
-            {
-                "label": str(self.registry.dynamic.label_encoder.classes_[int(idx)]),
-                "confidence": float(probabilities[int(idx)]),
-            }
-            for idx in top_indices
-        ]
+        top_predictions = []
+        for idx in top_indices:
+            idx_int = int(idx)
+            if idx_int < len(classes):
+                label = str(classes[idx_int])
+            else:
+                label = "Unknown"
+            top_predictions.append({
+                "label": label,
+                "confidence": float(probabilities[idx_int]),
+            })
 
         return {
             "word": predicted_word,
@@ -458,14 +322,22 @@ class InferenceService:
     def _extract_dynamic_vector(
         self,
         frame_bgr: np.ndarray,
+        timestamp_ms: int | None = None,
     ) -> tuple[np.ndarray, bool, np.ndarray]:
         frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
         mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=frame_rgb)
 
         with self._dynamic_pose_detector_lock:
-            pose_result = self._dynamic_pose_detector.detect(mp_image)
+            if timestamp_ms is not None:
+                pose_result = self._dynamic_pose_detector.detect_for_video(mp_image, timestamp_ms)
+            else:
+                pose_result = self._dynamic_pose_detector.detect(mp_image)
+                
         with self._dynamic_hand_detector_lock:
-            hand_result = self._dynamic_hand_detector.detect(mp_image)
+            if timestamp_ms is not None:
+                hand_result = self._dynamic_hand_detector.detect_for_video(mp_image, timestamp_ms)
+            else:
+                hand_result = self._dynamic_hand_detector.detect(mp_image)
 
         pose_arr = self._pose_to_array(pose_result)
         left_hand, right_hand = self._split_hands_by_side(hand_result)
@@ -538,109 +410,32 @@ class InferenceService:
 
     def _normalize_dynamic(self, sequence: np.ndarray) -> np.ndarray:
         """
-        Normalize dynamic sequence features.
-        The 225-dim PyTorch models were trained with per-sequence X-Y centering.
-        The 258-dim legacy models were trained with global Z-score normalization.
+        Normalize dynamic sequence features using per-sequence X-Y centering.
         """
-        feat_dim = int(sequence.shape[1])
-
-        # Detect if we are using the new 225-dim models
-        if feat_dim == 225:
-            # Implementation of the per-sequence centering from the notebooks
-            # arr[:, 0::3] is X, arr[:, 1::3] is Y
-            normalized = sequence.copy()
+        normalized = sequence.copy()
+        
+        # Find non-zero coordinates to calculate mean
+        mask_x = normalized[:, 0::3] != 0
+        mask_y = normalized[:, 1::3] != 0
+        
+        if mask_x.any():
+            mean_x = normalized[:, 0::3][mask_x].mean()
+            normalized[:, 0::3] -= mean_x
             
-            # Find non-zero coordinates to calculate mean
-            mask_x = normalized[:, 0::3] != 0
-            mask_y = normalized[:, 1::3] != 0
-            
-            if mask_x.any():
-                mean_x = normalized[:, 0::3][mask_x].mean()
-                # Subtract from all frames (including those with zeros)
-                # This matches notebook: arr[:, 0::3] -= cx
-                normalized[:, 0::3] -= mean_x
-                
-            if mask_y.any():
-                mean_y = normalized[:, 1::3][mask_y].mean()
-                normalized[:, 1::3] -= mean_y
-            
-            return normalized[np.newaxis, ...].astype(np.float32)
-
-        # Legacy Z-score normalization for 258-dim or other sizes
-        mean = np.asarray(self.registry.dynamic.norm_mean, dtype=np.float32).reshape(-1)
-        std = np.asarray(self.registry.dynamic.norm_std, dtype=np.float32).reshape(-1)
-
-        # Handle legacy mean/std that included pose visibility (33*4 + 21*3 + 21*3 = 258)
-        if mean.size != feat_dim:
-            logger.warning(
-                "Dynamic normalization vectors size mismatch: mean=%d expected=%d; attempting compatibility fix",
-                mean.size,
-                feat_dim,
-            )
-            if mean.size == 258 and feat_dim == 225:
-                pose_mean = mean[: 33 * 4].reshape(33, 4)[:, :3].reshape(-1)
-                pose_std = std[: 33 * 4].reshape(33, 4)[:, :3].reshape(-1)
-                rest_mean = mean[33 * 4 :]
-                rest_std = std[33 * 4 :]
-                mean = np.concatenate([pose_mean, rest_mean], axis=0)
-                std = np.concatenate([pose_std, rest_std], axis=0)
-            else:
-                if mean.size > feat_dim:
-                    mean = mean[:feat_dim]
-                    std = std[:feat_dim]
-                else:
-                    pad_mean = np.full(feat_dim - mean.size, mean[-1], dtype=mean.dtype)
-                    pad_std = np.full(feat_dim - std.size, std[-1], dtype=std.dtype)
-                    mean = np.concatenate([mean, pad_mean], axis=0)
-                    std = np.concatenate([std, pad_std], axis=0)
-
-        std = np.where(std == 0, 1.0, std)
-        normalized = (sequence - mean) / std
+        if mask_y.any():
+            mean_y = normalized[:, 1::3][mask_y].mean()
+            normalized[:, 1::3] -= mean_y
+        
         return normalized[np.newaxis, ...].astype(np.float32)
 
     def _predict_pytorch(self, sequence: np.ndarray, actual_len: int | None = None) -> np.ndarray:
-        """Run PyTorch model inference."""
-        checkpoint = self.registry.dynamic.classifier
-        if not isinstance(checkpoint, dict):
-            logger.error("PyTorch checkpoint not loaded correctly")
+        """Run PyTorch model inference using cached model."""
+        model = self.registry.dynamic.model
+        if model is None:
+            logger.error("Dynamic model not loaded in registry")
             return np.zeros(50, dtype=np.float32)
 
         try:
-            model_config = self.registry.dynamic.pytorch_config or {}
-            input_dim = checkpoint.get("input_dim", 225)
-            num_classes = checkpoint.get("num_classes", 50)
-            max_frames = checkpoint.get("max_frames", self.settings.sequence_length)
-
-            state_dict = checkpoint.get("model_state_dict") or checkpoint.get("state_dict")
-            model_kind = self.registry.dynamic.model_kind
-
-            if model_kind == "lstm":
-                model = ASLLSTMModel(
-                    input_dim=input_dim,
-                    num_classes=num_classes,
-                    hidden_dim=model_config.get("hidden_dim", model_config.get("hidden_size", 256)),
-                    num_layers=model_config.get("num_layers", 2),
-                    dropout=model_config.get("dropout", 0.3),
-                    bidirectional=model_config.get("bidirectional", True),
-                )
-            else:
-                model = ASLTransformerModel(
-                    input_dim=input_dim,
-                    num_classes=num_classes,
-                    d_model=model_config.get("d_model", 256),
-                    nhead=model_config.get("nhead", 8),
-                    num_layers=model_config.get("num_layers", 4),
-                    dim_feedforward=model_config.get("dim_feedforward", 512),
-                    dropout=model_config.get("dropout", 0.1),
-                    max_len=512,
-                )
-
-            if state_dict is not None:
-                model.load_state_dict(state_dict)
-
-            model.to(DEVICE)
-            model.eval()
-
             # Run inference
             x = torch.tensor(sequence, dtype=torch.float32).to(DEVICE)
             
@@ -658,6 +453,4 @@ class InferenceService:
             return probs[0].cpu().numpy()
         except Exception as e:
             logger.error(f"PyTorch inference failed: {e}")
-            import traceback
-            traceback.print_exc()
             return np.zeros(50, dtype=np.float32)

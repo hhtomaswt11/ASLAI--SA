@@ -24,9 +24,10 @@ class StaticArtifacts:
 @dataclass(slots=True)
 class DynamicArtifacts:
     classifier: Any | None  # PyTorch checkpoint (dict)
-    label_encoder: Any | None
-    norm_mean: np.ndarray | None
-    norm_std: np.ndarray | None
+    model: torch.nn.Module | None = None  # Instantiated model
+    label_encoder: Any | None = None
+    norm_mean: np.ndarray | None = None
+    norm_std: np.ndarray | None = None
     pytorch_config: dict[str, Any] | None = None  # Model architecture config
     model_kind: str = "unknown"
 
@@ -50,6 +51,7 @@ class ModelRegistry:
             item is not None
             for item in (
                 self.dynamic.classifier,
+                self.dynamic.model,
                 self.dynamic.label_encoder,
                 self.dynamic.norm_mean,
                 self.dynamic.norm_std,
@@ -145,8 +147,48 @@ def _load_pytorch_model(model_dir: Path) -> DynamicArtifacts:
             except Exception as e:
                 logger.warning(f"Could not load label encoder from file: {e}")
 
+    # Build the model object
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    input_dim = checkpoint.get("input_dim", 225)
+    num_classes = checkpoint.get("num_classes", 50)
+    
+    try:
+        from app.core.models import ASLLSTMModel, ASLTransformerModel
+        if model_kind == "lstm":
+            model = ASLLSTMModel(
+                input_dim=input_dim,
+                num_classes=num_classes,
+                hidden_dim=model_config.get("hidden_dim", model_config.get("hidden_size", 256)),
+                num_layers=model_config.get("num_layers", 2),
+                dropout=model_config.get("dropout", 0.3),
+                bidirectional=model_config.get("bidirectional", True),
+            )
+        else:
+            model = ASLTransformerModel(
+                input_dim=input_dim,
+                num_classes=num_classes,
+                d_model=model_config.get("d_model", 256),
+                nhead=model_config.get("nhead", 8),
+                num_layers=model_config.get("num_layers", 4),
+                dim_feedforward=model_config.get("dim_feedforward", 512),
+                dropout=model_config.get("dropout", 0.1),
+                max_len=512,
+            )
+        
+        state_dict = checkpoint.get("model_state_dict") or checkpoint.get("state_dict")
+        if state_dict:
+            model.load_state_dict(state_dict)
+        
+        model.to(device)
+        model.eval()
+        logger.info(f"Successfully built and loaded {model_kind} model on {device}")
+    except Exception as e:
+        logger.error(f"Failed to build model: {e}")
+        model = None
+
     return DynamicArtifacts(
         classifier=checkpoint,
+        model=model,
         label_encoder=label_encoder,
         norm_mean=_safe_numpy_load(model_dir / "lstm_norm_mean.npy"),
         norm_std=_safe_numpy_load(model_dir / "lstm_norm_std.npy"),
