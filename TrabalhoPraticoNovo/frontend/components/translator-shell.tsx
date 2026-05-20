@@ -9,15 +9,16 @@ import { OutputPanel } from "@/components/output-panel";
 type Mode = "static" | "dynamic";
 
 /**
- * Ajustes importantes:
- * - Threshold mais baixo para não rejeitar tantas previsões.
- * - Mais frames de confirmação, mas como agora prevemos muito mais rápido,
- *   continua fluido e evita adicionar letras por engano.
- * - Intervalo de previsão muito mais rápido, parecido com o notebook local.
+ * Ajustes de reconhecimento:
+ * - Threshold mais alto: reduz falsos positivos.
+ * - Mais frames de confirmação: obriga o gesto a ficar estável.
+ * - Intervalo um pouco mais lento: continua fluido, mas menos nervoso.
+ * - Cooldown depois de adicionar uma letra: evita adicionar demasiado depressa.
  */
-const STATIC_CONFIDENCE_THRESHOLD = 0.5;
-const STATIC_CONFIRM_HOLD_FRAMES = 4;
-const STATIC_PREDICTION_INTERVAL_MS = 160;
+const STATIC_CONFIDENCE_THRESHOLD = 0.62;
+const STATIC_CONFIRM_HOLD_FRAMES = 7;
+const STATIC_PREDICTION_INTERVAL_MS = 220;
+const STATIC_COMMIT_COOLDOWN_MS = 1000;
 
 function normalizeToken(token: string): string {
   return token.trim().toLowerCase();
@@ -60,6 +61,7 @@ export function TranslatorShell() {
   const lastStaticTokenRef = useRef<string | null>(null);
   const consecutiveStaticHoldRef = useRef(0);
   const staticAutoAddedRef = useRef(false);
+  const lastStaticCommitAtRef = useRef(0);
 
   const [mode, setMode] = useState<Mode>("static");
   const [isRecording, setIsRecording] = useState(false);
@@ -137,13 +139,13 @@ export function TranslatorShell() {
       if (mode !== "static") return;
 
       if (staticRequestInFlightRef.current) {
-        captureTimerRef.current = window.setTimeout(runStaticPrediction, 80);
+        captureTimerRef.current = window.setTimeout(runStaticPrediction, 100);
         return;
       }
 
       const frame = captureFrame();
       if (!frame) {
-        captureTimerRef.current = window.setTimeout(runStaticPrediction, 200);
+        captureTimerRef.current = window.setTimeout(runStaticPrediction, 250);
         return;
       }
 
@@ -227,7 +229,7 @@ export function TranslatorShell() {
      * Muito importante:
      * O vídeo está espelhado visualmente no CSS.
      * Aqui também espelhamos o frame enviado para o backend,
-     * para ficar parecido com o cv2.flip(frame, 1) do notebook.
+     * para ficar parecido com o cv2.flip(frame, 1) do notebook local.
      */
     context.save();
     context.translate(canvas.width, 0);
@@ -345,11 +347,17 @@ export function TranslatorShell() {
       staticAutoAddedRef.current = false;
     }
 
+    const now = Date.now();
+    const cooldownPassed =
+      now - lastStaticCommitAtRef.current >= STATIC_COMMIT_COOLDOWN_MS;
+
     if (
       consecutiveStaticHoldRef.current >= STATIC_CONFIRM_HOLD_FRAMES &&
-      !staticAutoAddedRef.current
+      !staticAutoAddedRef.current &&
+      cooldownPassed
     ) {
       staticAutoAddedRef.current = true;
+      lastStaticCommitAtRef.current = now;
       commitTokenToPhrase(token ?? "", "static");
     }
   }
@@ -400,6 +408,27 @@ export function TranslatorShell() {
       phraseText || (tokenText && tokenText !== "--" ? tokenText : "");
 
     if (!text) return;
+
+    /**
+     * Preferimos o TTS do browser porque toca diretamente no computador
+     * do utilizador. O backend pode gerar MP3, mas pode não conseguir tocar
+     * se o sistema não tiver mpv/ffplay/mplayer instalado.
+     */
+    if (
+      typeof window !== "undefined" &&
+      "speechSynthesis" in window &&
+      "SpeechSynthesisUtterance" in window
+    ) {
+      window.speechSynthesis.cancel();
+
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = "en-US";
+      utterance.rate = 0.9;
+      utterance.pitch = 1;
+
+      window.speechSynthesis.speak(utterance);
+      return;
+    }
 
     try {
       await api.speak(text);
