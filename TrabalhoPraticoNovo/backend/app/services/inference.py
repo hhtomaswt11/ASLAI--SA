@@ -15,7 +15,30 @@ from app.utils.image import decode_base64_frame, encode_frame
 
 logger = logging.getLogger(__name__)
 
-DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+def _get_safe_device() -> torch.device:
+    """Return CUDA if it is available AND works on this GPU, otherwise CPU.
+
+    torch.cuda.is_available() can return True even when the installed PyTorch
+    was not compiled for the current GPU's compute capability (e.g. GTX 1050
+    with sm_61 vs. a build that targets sm_75+). A quick probe catches this.
+    """
+    if not torch.cuda.is_available():
+        return torch.device("cpu")
+    try:
+        _probe = torch.zeros(1, device="cuda") + 1  # forces an actual CUDA kernel
+        del _probe
+        return torch.device("cuda")
+    except Exception as exc:
+        logger.warning(
+            "CUDA detected but not compatible with this GPU (%s); "
+            "falling back to CPU for inference.",
+            exc,
+        )
+        return torch.device("cpu")
+
+
+DEVICE = _get_safe_device()
 
 
 
@@ -39,6 +62,11 @@ class InferenceService:
         self._static_detector_lock = threading.Lock()
         self._dynamic_pose_detector_lock = threading.Lock()
         self._dynamic_hand_detector_lock = threading.Lock()
+        # Monotonically-increasing timestamp for MediaPipe VIDEO-mode detectors.
+        # VIDEO mode requires strictly increasing timestamps across ALL calls to
+        # detect_for_video, even between separate HTTP requests.
+        self._ts_lock = threading.Lock()
+        self._last_ts_ms: int = 0
 
     def health_payload(self) -> dict[str, Any]:
         return {
@@ -173,7 +201,22 @@ class InferenceService:
             logger.exception("Failed to download pose_landmarker.task")
             return None
 
+    def _next_ts(self) -> int:
+        """Return a timestamp (ms) that is strictly greater than the last one returned.
+
+        MediaPipe VIDEO-mode detectors maintain state across calls and require
+        monotonically-increasing timestamps. Using wall-clock time per request
+        fails when requests arrive within the same millisecond or when the
+        detector's internal clock is ahead of the new request's wall time.
+        """
+        with self._ts_lock:
+            now_ms = int(time.time() * 1000)
+            # Advance by at least 1 ms beyond the last timestamp we issued
+            self._last_ts_ms = max(now_ms, self._last_ts_ms + 1)
+            return self._last_ts_ms
+
     def _draw_task_hand_landmarks(self, frame_bgr: np.ndarray, landmarks: Any) -> None:
+
         height, width = frame_bgr.shape[:2]
         points: list[tuple[int, int]] = []
 
@@ -212,77 +255,97 @@ class InferenceService:
             }
 
         vectors: list[np.ndarray] = []
+        hand_mask: list[bool] = []   # True where hand landmarks were detected
         body_detected = False
         annotated_frame: np.ndarray | None = None
 
-        # Use a base timestamp for the sequence
-        start_ts_ms = int(time.time() * 1000)
-        
         for i, frame_b64 in enumerate(frame_payloads):
             try:
                 frame_bgr = decode_base64_frame(frame_b64)
                 if frame_bgr is None:
+                    # Keep timing consistent even for failed/missing frames
+                    vectors.append(np.zeros(225, dtype=np.float32))
+                    hand_mask.append(False)
                     continue
-                # Increment timestamp by 33ms (~30fps) for each frame in the sequence
-                ts_ms = start_ts_ms + (i * 33)
-                vector, frame_has_body, annotated = self._extract_dynamic_vector(frame_bgr, timestamp_ms=ts_ms)
+                ts_ms = self._next_ts()  # guaranteed monotonically increasing
+                vector, frame_has_body, frame_has_hand, annotated = self._extract_dynamic_vector(
+                    frame_bgr, timestamp_ms=ts_ms
+                )
                 vectors.append(vector)
+                hand_mask.append(frame_has_hand)
                 body_detected = body_detected or frame_has_body
                 annotated_frame = annotated
             except Exception as e:
                 logger.warning(f"Error processing frame {i} in dynamic sequence: {e}")
-                # Append a zero vector to keep timing consistent if one frame fails
                 vectors.append(np.zeros(225, dtype=np.float32))
+                hand_mask.append(False)
 
-        # 4. Prepare sequence (crop if too long)
+        # --- Reject sequences with too few hand frames ---
+        hand_frame_count = sum(hand_mask)
+        min_required = max(1, int(len(vectors) * self.settings.min_hand_frames_ratio))
+        if hand_frame_count < min_required:
+            logger.debug(
+                f"Rejecting: {hand_frame_count}/{len(vectors)} hand frames "
+                f"(need {min_required})"
+            )
+            return {
+                "word": None,
+                "confidence": 0.0,
+                "body_detected": body_detected,
+                "top_predictions": [],
+                "annotated_frame_b64": encode_frame(annotated_frame) if annotated_frame is not None else None,
+            }
+
+        # --- Determine target sequence length from checkpoint ---
         checkpoint = self.registry.dynamic.classifier
-        target_len = checkpoint.get("max_frames", self.settings.sequence_length) if isinstance(checkpoint, dict) else self.settings.sequence_length
-        
-        sequence = np.stack(vectors, axis=0) if vectors else np.zeros((1, 225), dtype=np.float32)
-        if sequence.shape[0] > target_len:
-            sequence = sequence[:target_len]
-        
-        actual_len = sequence.shape[0]
+        target_len = (
+            checkpoint.get("max_frames", self.settings.sequence_length)
+            if isinstance(checkpoint, dict)
+            else self.settings.sequence_length
+        )
 
-        # 5. Normalize BEFORE padding (matches notebook pipeline)
-        normalized_seq = self._normalize_dynamic(sequence)
-        # _normalize_dynamic returns (1, frames, features), we want (frames, features)
-        normalized_seq = normalized_seq[0]
+        # --- Trim to active gesture region, then pad ---
+        sequence = np.stack(vectors, axis=0)
+        sequence, actual_len = self._trim_to_active_frames(sequence, hand_mask, target_len)
 
-        # 6. Pad to target length
+        # --- Normalize BEFORE padding (matches notebook pipeline) ---
+        normalized_seq = self._normalize_dynamic(sequence)[0]  # strip batch dim
+
         if normalized_seq.shape[0] < target_len:
-            pad = np.zeros((target_len - normalized_seq.shape[0], normalized_seq.shape[1]), dtype=np.float32)
+            pad = np.zeros(
+                (target_len - normalized_seq.shape[0], normalized_seq.shape[1]),
+                dtype=np.float32,
+            )
             normalized_seq = np.vstack([normalized_seq, pad])
 
-        # 7. Inference
-        probabilities = self._predict_pytorch(normalized_seq[np.newaxis, ...], actual_len=actual_len)
+        # --- Inference with Test-Time Augmentation ---
+        probabilities = self._predict_with_tta(normalized_seq[np.newaxis, ...], actual_len=actual_len)
 
         top_k = min(5, int(probabilities.shape[0]))
         top_indices = probabilities.argsort()[-top_k:][::-1]
-
         predicted_idx = int(top_indices[0])
-        
-        # Robust label lookup
+        confidence = float(probabilities[predicted_idx])
+
         classes = self.registry.dynamic.label_encoder.classes_
         if predicted_idx < len(classes):
-            predicted_word = str(classes[predicted_idx])
+            predicted_word: str | None = str(classes[predicted_idx])
         else:
-            predicted_word = f"Unknown ({predicted_idx})"
-            logger.error(f"Predicted index {predicted_idx} out of bounds for classes (len={len(classes)})")
-            
-        confidence = float(probabilities[predicted_idx])
+            predicted_word = None
+            logger.error(f"Predicted index {predicted_idx} out of bounds (len={len(classes)})")
+
+        # --- Apply confidence threshold ---
+        if confidence < self.settings.dynamic_confidence_threshold:
+            logger.debug(
+                f"Low-confidence prediction suppressed: {predicted_word} "
+                f"({confidence:.3f} < {self.settings.dynamic_confidence_threshold})"
+            )
+            predicted_word = None
 
         top_predictions = []
         for idx in top_indices:
             idx_int = int(idx)
-            if idx_int < len(classes):
-                label = str(classes[idx_int])
-            else:
-                label = "Unknown"
-            top_predictions.append({
-                "label": label,
-                "confidence": float(probabilities[idx_int]),
-            })
+            label = str(classes[idx_int]) if idx_int < len(classes) else "Unknown"
+            top_predictions.append({"label": label, "confidence": float(probabilities[idx_int])})
 
         return {
             "word": predicted_word,
@@ -291,6 +354,7 @@ class InferenceService:
             "top_predictions": top_predictions,
             "annotated_frame_b64": encode_frame(annotated_frame) if annotated_frame is not None else None,
         }
+
 
     def _normalize_static_landmarks(self, landmarks: Any) -> list[float] | None:
         wx, wy, wz = landmarks[0].x, landmarks[0].y, landmarks[0].z
@@ -323,7 +387,8 @@ class InferenceService:
         self,
         frame_bgr: np.ndarray,
         timestamp_ms: int | None = None,
-    ) -> tuple[np.ndarray, bool, np.ndarray]:
+    ) -> tuple[np.ndarray, bool, bool, np.ndarray]:
+        """Return (feature_vector, body_detected, hand_detected, annotated_frame)."""
         frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
         mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=frame_rgb)
 
@@ -332,7 +397,7 @@ class InferenceService:
                 pose_result = self._dynamic_pose_detector.detect_for_video(mp_image, timestamp_ms)
             else:
                 pose_result = self._dynamic_pose_detector.detect(mp_image)
-                
+
         with self._dynamic_hand_detector_lock:
             if timestamp_ms is not None:
                 hand_result = self._dynamic_hand_detector.detect_for_video(mp_image, timestamp_ms)
@@ -349,9 +414,12 @@ class InferenceService:
         if right_hand:
             self._draw_task_hand_landmarks(frame_bgr, right_hand)
 
+        # Order matches notebook pivot sort: left_hand → pose → right_hand
         vector = np.concatenate([lh_arr, pose_arr, rh_arr])
+        hand_detected = bool(hand_result.hand_landmarks)
         body_detected = bool(pose_result.pose_landmarks or hand_result.hand_landmarks)
-        return vector, body_detected, frame_bgr
+        return vector, body_detected, hand_detected, frame_bgr
+
 
     def _pose_to_array(self, pose_result: Any) -> np.ndarray:
         if not pose_result.pose_landmarks:
@@ -408,6 +476,37 @@ class InferenceService:
 
         return sequence, actual_len
 
+    def _trim_to_active_frames(
+        self,
+        sequence: np.ndarray,
+        hand_mask: list[bool],
+        target_len: int,
+    ) -> tuple[np.ndarray, int]:
+        """
+        Trim leading and trailing frames without hand detection to isolate the
+        active gesture region. This aligns the inference sequence with the
+        training distribution, where each sample is a complete, well-isolated gesture.
+
+        A small context buffer is kept around the active region to preserve
+        motion onset/offset information.
+        """
+        active = [i for i, has_hand in enumerate(hand_mask) if has_hand]
+        if not active:
+            # No hand detected at all — return as-is; caller already handled this
+            return sequence, min(sequence.shape[0], target_len)
+
+        CONTEXT = 2  # frames of context to keep before/after the gesture
+        start = max(0, active[0] - CONTEXT)
+        end = min(sequence.shape[0], active[-1] + 1 + CONTEXT)
+
+        trimmed = sequence[start:end]
+        if trimmed.shape[0] > target_len:
+            trimmed = trimmed[:target_len]
+
+        actual_len = trimmed.shape[0]
+        return trimmed, actual_len
+
+
     def _normalize_dynamic(self, sequence: np.ndarray) -> np.ndarray:
         """
         Normalize dynamic sequence features using per-sequence X-Y centering.
@@ -429,17 +528,16 @@ class InferenceService:
         return normalized[np.newaxis, ...].astype(np.float32)
 
     def _predict_pytorch(self, sequence: np.ndarray, actual_len: int | None = None) -> np.ndarray:
-        """Run PyTorch model inference using cached model."""
+        """Run PyTorch model inference."""
         model = self.registry.dynamic.model
         if model is None:
             logger.error("Dynamic model not loaded in registry")
             return np.zeros(50, dtype=np.float32)
 
         try:
-            # Run inference
+            model.eval()  # Ensure eval mode (disables dropout, batchnorm in training mode)
             x = torch.tensor(sequence, dtype=torch.float32).to(DEVICE)
-            
-            # Create padding mask (True for padding positions)
+
             pad_mask = None
             if actual_len is not None:
                 pad_mask = torch.zeros(1, x.size(1), dtype=torch.bool).to(DEVICE)
@@ -454,3 +552,31 @@ class InferenceService:
         except Exception as e:
             logger.error(f"PyTorch inference failed: {e}")
             return np.zeros(50, dtype=np.float32)
+    def _predict_with_tta(self, sequence: np.ndarray, actual_len: int | None = None) -> np.ndarray:
+        """
+        Test-Time Augmentation: run inference on the original sequence and a
+        horizontally-mirrored version (x-coordinates negated), then return the
+        geometric mean of the two probability vectors.
+
+        Rationale: ASL signs are often performed with the dominant hand. MediaPipe
+        handedness labels can differ between the pre-recorded training data and live
+        camera input (mirror effect). Averaging over both orientations makes the
+        model more robust to this ambiguity at the cost of 2× inference time.
+        """
+        probs_orig = self._predict_pytorch(sequence, actual_len=actual_len)
+
+        # Flip x-coordinates (every 3rd value starting at index 0)
+        seq_flipped = sequence.copy()
+        seq_flipped[:, :, 0::3] *= -1
+        probs_flip = self._predict_pytorch(seq_flipped, actual_len=actual_len)
+
+        # Geometric mean is more conservative than arithmetic mean for probabilities
+        eps = 1e-9
+        probs_geo = np.sqrt(np.maximum(probs_orig, eps) * np.maximum(probs_flip, eps))
+        # Re-normalise so probabilities sum to 1
+        total = probs_geo.sum()
+        if total > 0:
+            probs_geo /= total
+
+        return probs_geo
+
