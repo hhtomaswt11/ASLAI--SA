@@ -530,9 +530,14 @@ class InferenceService:
     def _predict_pytorch(self, sequence: np.ndarray, actual_len: int | None = None) -> np.ndarray:
         """Run PyTorch model inference."""
         model = self.registry.dynamic.model
+        num_classes = (
+            self.registry.dynamic.label_encoder.classes_.shape[0]
+            if self.registry.dynamic.label_encoder is not None
+            else 50
+        )
         if model is None:
             logger.error("Dynamic model not loaded in registry")
-            return np.zeros(50, dtype=np.float32)
+            return np.zeros(num_classes, dtype=np.float32)
 
         try:
             model.eval()  # Ensure eval mode (disables dropout, batchnorm in training mode)
@@ -551,7 +556,7 @@ class InferenceService:
             return probs[0].cpu().numpy()
         except Exception as e:
             logger.error(f"PyTorch inference failed: {e}")
-            return np.zeros(50, dtype=np.float32)
+            return np.zeros(num_classes, dtype=np.float32)
     def _predict_with_tta(self, sequence: np.ndarray, actual_len: int | None = None) -> np.ndarray:
         """
         Test-Time Augmentation: run inference on the original sequence and a

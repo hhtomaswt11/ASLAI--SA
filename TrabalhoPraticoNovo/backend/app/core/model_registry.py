@@ -99,7 +99,7 @@ def build_model_registry() -> ModelRegistry:
 def _load_pytorch_model(model_dir: Path) -> DynamicArtifacts:
     """Load PyTorch dynamic model (LSTM or Transformer)."""
     # Try to load Transformer first
-    checkpoint = _safe_pytorch_load(model_dir / "asl_transformer_final.pt")
+    checkpoint = _safe_pytorch_load(model_dir / "asl_transformer_v2_100_2.pt")
     model_kind = "transformer"
     
     if checkpoint is None:
@@ -180,9 +180,9 @@ def _load_pytorch_model(model_dir: Path) -> DynamicArtifacts:
                 input_dim=input_dim,
                 num_classes=num_classes,
                 d_model=model_config.get("d_model", 256),
-                nhead=model_config.get("nhead", 8),
-                num_layers=model_config.get("num_layers", 4),
-                dim_feedforward=model_config.get("dim_feedforward", 512),
+                nhead=model_config.get("nhead", 4),
+                num_layers=model_config.get("num_layers", 6),
+                dim_feedforward=model_config.get("dim_feedforward", 1024),
                 dropout=model_config.get("dropout", 0.1),
                 max_len=512,
             )
