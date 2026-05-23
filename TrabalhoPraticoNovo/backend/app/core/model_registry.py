@@ -47,14 +47,13 @@ class ModelRegistry:
 
     @property
     def has_dynamic_model(self) -> bool:
+        # norm_mean / norm_std are legacy LSTM artefacts — not used by the Transformer
         return all(
             item is not None
             for item in (
                 self.dynamic.classifier,
                 self.dynamic.model,
                 self.dynamic.label_encoder,
-                self.dynamic.norm_mean,
-                self.dynamic.norm_std,
             )
         )
 
@@ -100,7 +99,7 @@ def build_model_registry() -> ModelRegistry:
 def _load_pytorch_model(model_dir: Path) -> DynamicArtifacts:
     """Load PyTorch dynamic model (LSTM or Transformer)."""
     # Try to load Transformer first
-    checkpoint = _safe_pytorch_load(model_dir / "asl_transformer_final.pt")
+    checkpoint = _safe_pytorch_load(model_dir / "asl_transformer_v2_100_2.pt")
     model_kind = "transformer"
     
     if checkpoint is None:
@@ -148,7 +147,20 @@ def _load_pytorch_model(model_dir: Path) -> DynamicArtifacts:
                 logger.warning(f"Could not load label encoder from file: {e}")
 
     # Build the model object
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    # Determine device safely: torch.cuda.is_available() can return True even
+    # when the GPU's compute capability is not supported by the installed PyTorch.
+    def _probe_device() -> torch.device:
+        if not torch.cuda.is_available():
+            return torch.device("cpu")
+        try:
+            (torch.zeros(1, device="cuda") + 1)
+            return torch.device("cuda")
+        except Exception:
+            logger.warning("CUDA incompatible with this GPU; loading model on CPU.")
+            return torch.device("cpu")
+
+    device = _probe_device()
+
     input_dim = checkpoint.get("input_dim", 225)
     num_classes = checkpoint.get("num_classes", 50)
     
@@ -168,9 +180,9 @@ def _load_pytorch_model(model_dir: Path) -> DynamicArtifacts:
                 input_dim=input_dim,
                 num_classes=num_classes,
                 d_model=model_config.get("d_model", 256),
-                nhead=model_config.get("nhead", 8),
-                num_layers=model_config.get("num_layers", 4),
-                dim_feedforward=model_config.get("dim_feedforward", 512),
+                nhead=model_config.get("nhead", 4),
+                num_layers=model_config.get("num_layers", 6),
+                dim_feedforward=model_config.get("dim_feedforward", 1024),
                 dropout=model_config.get("dropout", 0.1),
                 max_len=512,
             )

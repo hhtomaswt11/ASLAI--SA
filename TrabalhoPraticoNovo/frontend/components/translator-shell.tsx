@@ -58,6 +58,10 @@ export function TranslatorShell() {
   const dynamicFramesRef = useRef<string[]>([]);
   const staticRequestInFlightRef = useRef(false);
   const staticFailureCountRef = useRef(0);
+  // Timer that auto-clears the prediction after a period of inactivity
+  const predictionHoldTimerRef = useRef<number | null>(null);
+  const PREDICTION_HOLD_MS = 4000; // keep prediction visible for 4 s
+
   const lastStaticTokenRef = useRef<string | null>(null);
   const consecutiveStaticHoldRef = useRef(0);
   const staticAutoAddedRef = useRef(false);
@@ -201,11 +205,28 @@ export function TranslatorShell() {
 
     try {
       const result = await api.predictDynamic(dynamicFramesRef.current);
-      setCurrentPrediction(result.word ?? "--");
-      setConfidence(result.confidence);
-
       if (result.word) {
+        // Got a confident result — show it and start the hold timer
+        setCurrentPrediction(result.word);
+        setConfidence(result.confidence);
         triggerRecognitionAnimation(result.word);
+
+        // Reset the auto-clear timer so the prediction stays for PREDICTION_HOLD_MS
+        if (predictionHoldTimerRef.current) {
+          window.clearTimeout(predictionHoldTimerRef.current);
+        }
+        predictionHoldTimerRef.current = window.setTimeout(() => {
+          setCurrentPrediction("--");
+          setConfidence(0);
+          predictionHoldTimerRef.current = null;
+        }, PREDICTION_HOLD_MS);
+      } else {
+        // If result.word is null (low confidence / no hand), keep the previous
+        // prediction visible — the hold timer will clear it when it expires.
+        if (!predictionHoldTimerRef.current) {
+          setCurrentPrediction("--");
+          setConfidence(0);
+        }
       }
     } finally {
       dynamicFramesRef.current = [];
@@ -248,6 +269,10 @@ export function TranslatorShell() {
     setMode((current) => (current === "static" ? "dynamic" : "static"));
     setCurrentPrediction("--");
     setConfidence(0);
+    if (predictionHoldTimerRef.current) {
+      window.clearTimeout(predictionHoldTimerRef.current);
+      predictionHoldTimerRef.current = null;
+    }
     resetStaticAutoCommit();
   }
 
@@ -264,19 +289,24 @@ export function TranslatorShell() {
 
     setIsRecording(true);
     dynamicFramesRef.current = [];
-
+    // Clear any pending hold timer when a new recording starts
+    if (predictionHoldTimerRef.current) {
+      window.clearTimeout(predictionHoldTimerRef.current);
+      predictionHoldTimerRef.current = null;
+    }
     const interval = window.setInterval(() => {
       const frame = captureFrame();
 
       if (frame) {
         dynamicFramesRef.current.push(frame);
       }
-
-      if (dynamicFramesRef.current.length >= 30) {
+      // Auto-stop at 60 frames — gives the backend close to the 64-frame
+      // window the Transformer was trained on (captured at ~15 fps = 4 s)
+      if (dynamicFramesRef.current.length >= 60) {
         window.clearInterval(interval);
         void stopDynamicCaptureAndPredict();
       }
-    }, 120);
+    }, 67); // ~15 fps
   }
 
   function isValidRecognizedToken(token: string): boolean {
