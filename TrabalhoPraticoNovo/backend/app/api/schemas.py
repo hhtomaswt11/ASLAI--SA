@@ -19,7 +19,7 @@ class FramePredictionRequest(BaseModel):
 
 
 class DynamicPredictionRequest(BaseModel):
-    frames: list[str] = Field(..., min_length=1, max_length=60)
+    frames: list[str] = Field(..., min_length=1, max_length=64)
 
 
 class StaticPredictionResponse(BaseModel):

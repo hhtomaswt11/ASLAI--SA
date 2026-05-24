@@ -64,7 +64,7 @@ export const api = {
     request<DynamicPredictionResponse>("/predict_dynamic", {
       method: "POST",
       body: JSON.stringify({ frames }),
-    }),
+    }).catch(() => null),
   correctPhrase: (phrase: string) =>
     request<PhraseCorrectionResponse>("/llm_correct", {
       method: "POST",
