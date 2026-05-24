@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     minimum_dynamic_frames: int = 10      # reject sequences shorter than this
     min_hand_frames_ratio: float = 0.20   # fraction of frames that must have hand detected
     dynamic_confidence_threshold: float = 0.15  # min confidence to emit a prediction
-    static_confidence_threshold: float = 0.75
+    static_confidence_threshold: float = 0.62
     model_artifacts_dir: Path = Field(
         default=Path(__file__).resolve().parents[3] / "shared_models"
     )

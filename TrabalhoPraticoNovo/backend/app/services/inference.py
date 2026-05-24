@@ -97,14 +97,35 @@ class InferenceService:
             first_hand = result.hand_landmarks[0]
             self._draw_task_hand_landmarks(frame_bgr, first_hand)
 
+
             features = self._normalize_static_landmarks(first_hand)
             if features is not None:
                 arr = np.array(features, dtype=np.float32).reshape(1, -1)
                 arr_scaled = self.registry.static.scaler.transform(arr)
-                pred = self.registry.static.classifier.predict(arr_scaled)
-                proba = self.registry.static.classifier.predict_proba(arr_scaled).max()
-                letter = self.registry.static.label_encoder.inverse_transform(pred)[0]
-                confidence = float(proba)
+
+                probas = self.registry.static.classifier.predict_proba(arr_scaled)[0]
+                order = np.argsort(probas)[::-1]
+
+                best_idx = int(order[0])
+                second_idx = int(order[1]) if len(order) > 1 else best_idx
+
+                best_class = self.registry.static.classifier.classes_[best_idx]
+                letter = self.registry.static.label_encoder.inverse_transform([best_class])[0]
+
+                confidence = float(probas[best_idx])
+                second_confidence = float(probas[second_idx])
+                margin = confidence - second_confidence
+
+                top_debug = []
+                for idx in order[:5]:
+                    class_id = self.registry.static.classifier.classes_[idx]
+                    label = self.registry.static.label_encoder.inverse_transform([class_id])[0]
+                    top_debug.append((str(label), float(probas[idx])))
+
+                logger.info("Static top predictions: %s", top_debug)
+
+                if confidence < self.settings.static_confidence_threshold or margin < 0.10:
+                    letter = None
 
         return {
             "letter": letter,
