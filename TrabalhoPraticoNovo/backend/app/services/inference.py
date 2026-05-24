@@ -97,8 +97,15 @@ class InferenceService:
             first_hand = result.hand_landmarks[0]
             self._draw_task_hand_landmarks(frame_bgr, first_hand)
 
+            should_mirror = False
+            if result.handedness:
+                handedness_list = result.handedness[0]
+                # Como o modelo foi treinado com a mão ESQUERDA , 
+                # precisamos aplicar o flip (espelhar) quando usamos a mão direita.
+                if handedness_list and handedness_list[0].category_name.lower() == "left":
+                    should_mirror = True
 
-            features = self._normalize_static_landmarks(first_hand)
+            features = self._normalize_static_landmarks(first_hand, mirror_x=should_mirror)
             if features is not None:
                 arr = np.array(features, dtype=np.float32).reshape(1, -1)
                 arr_scaled = self.registry.static.scaler.transform(arr)
@@ -377,7 +384,7 @@ class InferenceService:
         }
 
 
-    def _normalize_static_landmarks(self, landmarks: Any) -> list[float] | None:
+    def _normalize_static_landmarks(self, landmarks: Any, mirror_x: bool = False) -> list[float] | None:
         wx, wy, wz = landmarks[0].x, landmarks[0].y, landmarks[0].z
         base_ids = [5, 9, 13, 17]
 
@@ -394,7 +401,10 @@ class InferenceService:
 
         features: list[float] = []
         for lm in landmarks:
-            features.append((lm.x - wx) / scale)
+            dx = lm.x - wx
+            if mirror_x:
+                dx = -dx
+            features.append(dx / scale)
             features.append((lm.y - wy) / scale)
             features.append((lm.z - wz) / scale)
 

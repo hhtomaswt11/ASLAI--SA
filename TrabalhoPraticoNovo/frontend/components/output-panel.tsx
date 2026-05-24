@@ -70,7 +70,7 @@ export function OutputPanel({
         </div>
       </section>
 
-      <section className="flex-1 rounded-[20px] border border-asl-border bg-asl-panel p-5 backdrop-blur-xl">
+      <section className="flex flex-1 flex-col rounded-[20px] border border-asl-border bg-asl-panel p-5 backdrop-blur-xl">
         <p className="text-xs uppercase tracking-[0.3em] text-asl-muted">
           Frase
         </p>
@@ -94,7 +94,7 @@ export function OutputPanel({
             Ler em voz alta
           </button>
         </div>
-        <div className="mt-5 rounded-3xl border border-asl-border bg-black/10 p-4">
+        <div className="mt-5 flex flex-1 flex-col rounded-3xl border border-asl-border bg-black/10 p-4">
           <p className="text-sm text-asl-muted">Versão corrigida</p>
           <p className="mt-2 text-base text-asl-text">
             {correctedPhrase ?? "Sem correção aplicada."}

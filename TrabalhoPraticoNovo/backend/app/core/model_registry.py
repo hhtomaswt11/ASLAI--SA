@@ -85,12 +85,24 @@ def build_model_registry() -> ModelRegistry:
     # Load PyTorch dynamic model (can be LSTM or Transformer)
     dynamic_artifacts = _load_pytorch_model(model_dir)
 
+    static_classifier = _safe_joblib_load(model_dir / "mlp_asl_landmarks.joblib")
+    static_scaler = _safe_joblib_load(model_dir / "scaler_asl_landmarks.joblib")
+    static_label_encoder = _safe_joblib_load(model_dir / "label_encoder_asl_landmarks.joblib")
+
+    # Clean up feature names to avoid UserWarning when predicting with numpy arrays
+    for obj in (static_classifier, static_scaler):
+        if obj is not None and hasattr(obj, "feature_names_in_"):
+            try:
+                delattr(obj, "feature_names_in_")
+            except AttributeError:
+                pass
+
     return ModelRegistry(
         model_dir=model_dir,
         static=StaticArtifacts(
-            classifier=_safe_joblib_load(model_dir / "mlp_asl_landmarks.joblib"),
-            scaler=_safe_joblib_load(model_dir / "scaler_asl_landmarks.joblib"),
-            label_encoder=_safe_joblib_load(model_dir / "label_encoder_asl_landmarks.joblib"),
+            classifier=static_classifier,
+            scaler=static_scaler,
+            label_encoder=static_label_encoder,
         ),
         dynamic=dynamic_artifacts,
     )

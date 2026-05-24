@@ -131,6 +131,8 @@ export function TranslatorShell() {
   }, []);
 
   useEffect(() => {
+    let isCancelled = false;
+
     if (mode !== "static") {
       if (captureTimerRef.current) {
         window.clearTimeout(captureTimerRef.current);
@@ -140,7 +142,7 @@ export function TranslatorShell() {
     }
 
     const runStaticPrediction = async () => {
-      if (mode !== "static") return;
+      if (isCancelled) return;
 
       if (staticRequestInFlightRef.current) {
         captureTimerRef.current = window.setTimeout(runStaticPrediction, 100);
@@ -149,7 +151,9 @@ export function TranslatorShell() {
 
       const frame = captureFrame();
       if (!frame) {
-        captureTimerRef.current = window.setTimeout(runStaticPrediction, 250);
+        if (!isCancelled) {
+          captureTimerRef.current = window.setTimeout(runStaticPrediction, 250);
+        }
         return;
       }
 
@@ -157,8 +161,9 @@ export function TranslatorShell() {
 
       try {
         const result = await api.predictStatic(frame);
-        const predictedToken =
-          result.letter ?? (result.hand_detected ? "?" : "--");
+        if (isCancelled) return;
+
+        const predictedToken = result.letter ?? "--";
 
         setCurrentPrediction(predictedToken);
         setConfidence(result.confidence);
@@ -170,6 +175,7 @@ export function TranslatorShell() {
           result.hand_detected,
         );
       } catch {
+        if (isCancelled) return;
         setBackendStatus("Offline");
         staticFailureCountRef.current = Math.min(
           staticFailureCountRef.current + 1,
@@ -178,18 +184,21 @@ export function TranslatorShell() {
       } finally {
         staticRequestInFlightRef.current = false;
 
-        const delay =
-          staticFailureCountRef.current > 0
-            ? 1000 + staticFailureCountRef.current * 300
-            : STATIC_PREDICTION_INTERVAL_MS;
+        if (!isCancelled) {
+          const delay =
+            staticFailureCountRef.current > 0
+              ? 1000 + staticFailureCountRef.current * 300
+              : STATIC_PREDICTION_INTERVAL_MS;
 
-        captureTimerRef.current = window.setTimeout(runStaticPrediction, delay);
+          captureTimerRef.current = window.setTimeout(runStaticPrediction, delay);
+        }
       }
     };
 
     captureTimerRef.current = window.setTimeout(runStaticPrediction, 0);
 
     return () => {
+      isCancelled = true;
       if (captureTimerRef.current) {
         window.clearTimeout(captureTimerRef.current);
         captureTimerRef.current = null;
@@ -468,7 +477,7 @@ export function TranslatorShell() {
   }
 
   return (
-    <main className="relative mx-auto flex min-h-screen max-w-[1500px] flex-col px-6 py-8 lg:px-10">
+    <main className="relative mx-auto flex h-[100dvh] max-w-[1500px] flex-col overflow-hidden px-6 py-6 lg:px-10">
       <style>{`
         @keyframes asl-letter-jump {
           0% {
@@ -524,18 +533,44 @@ export function TranslatorShell() {
         </div>
       </header>
 
-      <div className="grid flex-1 gap-6 lg:grid-cols-[minmax(0,1fr),420px]">
-        <CameraPanel
-          videoRef={videoRef}
-          currentPrediction={currentPrediction}
-          confidence={confidence}
-          mode={mode}
-          isRecording={isRecording}
-          onToggleMode={toggleMode}
-          onToggleRecording={toggleRecording}
-        />
+      <div className="grid min-h-0 flex-1 gap-6 lg:grid-cols-[minmax(0,1fr),420px]">
+        <div className="flex min-h-0 flex-col gap-4 overflow-y-auto pb-4 pr-1">
+          <CameraPanel
+            videoRef={videoRef}
+            currentPrediction={currentPrediction}
+            confidence={confidence}
+            mode={mode}
+            isRecording={isRecording}
+            onToggleMode={toggleMode}
+            onToggleRecording={toggleRecording}
+          />
+          
+          {recognizedToken && (
+            <div
+              aria-live="polite"
+              className="flex flex-1 flex-col justify-center gap-2 rounded-[24px] border border-asl-border bg-asl-panel px-8 py-6 text-asl-text shadow-sm backdrop-blur-xl"
+            >
+              <p className="text-sm uppercase tracking-[0.3em] text-[#cfb97b]">
+                Gesto reconhecido
+              </p>
 
-        <div className="flex flex-col gap-4">
+              <div className="mt-2 flex items-center gap-6">
+                <span
+                  key={recognitionAnimationKey}
+                  className="asl-letter-jump flex h-24 min-w-[96px] items-center justify-center rounded-[20px] bg-asl-accent px-4 text-5xl font-black text-white dark:text-black shadow-lg"
+                >
+                  {recognizedToken}
+                </span>
+
+                <span className="text-base text-asl-muted whitespace-nowrap">
+                  A animação aparece aqui quando o gesto é confirmado.
+                </span>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="flex min-h-0 flex-col gap-4 overflow-y-auto pb-4 pr-1">
           <OutputPanel
             phrase={phrase}
             correctedPhrase={correctedPhrase}
@@ -547,30 +582,6 @@ export function TranslatorShell() {
             onCorrect={correctPhrase}
             onSpeak={speakPhrase}
           />
-
-          {recognizedToken && (
-            <div
-              aria-live="polite"
-              className="rounded-[24px] border border-asl-border bg-asl-panel px-5 py-4 text-asl-text shadow-sm backdrop-blur-xl"
-            >
-              <p className="text-xs uppercase tracking-[0.3em] text-[#cfb97b]">
-                Letra reconhecida
-              </p>
-
-              <div className="mt-3 flex items-center gap-4">
-                <span
-                  key={recognitionAnimationKey}
-                  className="asl-letter-jump flex h-14 min-w-14 items-center justify-center rounded-2xl bg-asl-accent px-4 text-3xl font-black text-black shadow-lg"
-                >
-                  {recognizedToken}
-                </span>
-
-                <span className="text-sm text-asl-muted">
-                  A animação aparece aqui quando a letra é confirmada.
-                </span>
-              </div>
-            </div>
-          )}
         </div>
       </div>
     </main>
