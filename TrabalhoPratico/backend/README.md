@@ -34,10 +34,7 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
 Por omissao, o backend tenta carregar artefactos de:
 
-1. `TrabalhoPraticoNovo/shared_models`
-2. `../TrabalhoPratico/models`
-
-A segunda opcao existe para facilitar a fase inicial de migracao.
+`TrabalhoPraticoNovo/shared_models`
 
 ## Fluxo recomendado de validacao
 
