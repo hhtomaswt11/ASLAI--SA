@@ -6,15 +6,15 @@ The project explores the use of **Computer Vision**, **Machine Learning** and re
 
 The repository contains both stages of the work:
 
-* **TI — Research Work**: state-of-the-art analysis and scientific research paper;
-* **TP — Practical Work**: functional prototype for real-time sign language recognition.
+* **TrabalhoInvestigacao — Research Work**: state-of-the-art analysis and scientific research paper;
+* **TrabalhoPratico — Practical Work**: functional prototype for real-time sign language recognition.
 
 ## Final Grades
 
-| Component | Description         | Grade |
-| --------- | ------------------- | ----: |
-| TI        | Research Work       | 19/20 |
-| TP        | Practical Prototype | 18/20 |
+| Component            | Description         | Grade |
+| -------------------- | ------------------- | ----: |
+| TrabalhoInvestigacao | Research Work       | 19/20 |
+| TrabalhoPratico      | Practical Prototype | 18/20 |
 
 ## Project Motivation
 
@@ -82,11 +82,11 @@ The project uses:
 
 ```txt
 .
-├── TI/
+├── TrabalhoInvestigacao/
 │   ├── README.md
 │   └── research-paper.pdf
 │
-├── TP/
+├── TrabalhoPratico/
 │   ├── README.md
 │   ├── backend/
 │   ├── frontend/
@@ -98,13 +98,13 @@ The project uses:
 
 ## Project Components
 
-### TI — Research Work
+### TrabalhoInvestigacao — Research Work
 
 The research work presents a scientific analysis of sign language recognition and translation systems using Computer Vision and Machine Learning.
 
 It discusses the technical feasibility of using webcam-based sensing, MediaPipe landmarks and machine learning models to recognize gestures and translate them into text and speech.
 
-### TP — Practical Work
+### TrabalhoPratico — Practical Work
 
 The practical work implements a functional prototype with:
 

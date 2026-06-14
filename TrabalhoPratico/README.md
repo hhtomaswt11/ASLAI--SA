@@ -15,27 +15,30 @@ The prototype combines:
 * static gesture recognition;
 * dynamic gesture recognition;
 * phrase composition;
-* basic phrase correction;
+* phrase correction;
 * text-to-speech output;
 * a web-based user interface;
 * a FastAPI inference backend.
 
 ## Main Objective
 
-The goal of the practical prototype is to demonstrate how Computer Vision and Machine Learning can be combined to create an accessible sign language translation system.
+The main objective of this prototype is to demonstrate how **Computer Vision**, **Machine Learning** and real-time sensing can be combined to create an accessible sign language translation system.
 
-The system allows the user to perform gestures in front of the webcam and receive a prediction in real time. The recognized tokens can then be accumulated into a phrase, corrected and read aloud.
+The system allows the user to perform gestures in front of the webcam and receive predictions in real time. The recognized tokens can then be accumulated into a phrase, corrected and read aloud.
 
 ## System Architecture
 
-The prototype is divided into four main parts:
+The practical prototype is divided into the following main components:
 
 ```txt
-TP/
-├── frontend/
+TrabalhoPratico/
+├── README.md
+├── .gitignore
 ├── backend/
+├── frontend/
 ├── notebooks/
-└── shared_models/
+├── shared_models/
+└── docs/
 ```
 
 ### Frontend
@@ -43,14 +46,14 @@ TP/
 The frontend is a **Next.js** web application responsible for:
 
 * accessing the webcam;
-* capturing frames;
+* capturing frames from the video stream;
 * sending frames to the backend;
 * displaying the current prediction;
 * showing the confidence score;
-* allowing the user to switch between static and dynamic modes;
+* switching between static and dynamic recognition modes;
 * composing the final phrase;
 * triggering phrase correction;
-* triggering text-to-speech.
+* triggering text-to-speech output.
 
 ### Backend
 
@@ -61,24 +64,29 @@ The backend is a **FastAPI** service responsible for:
 * loading trained model artifacts;
 * performing static gesture inference;
 * performing dynamic gesture inference;
-* correcting recognized phrases;
-* generating speech output.
+* applying phrase correction;
+* providing a speech output endpoint.
 
 ### Notebooks
 
-The notebooks contain the experimental and training work, including:
+The `notebooks/` folder contains the experimental and training work developed during the project.
 
-* landmark extraction;
-* static gesture model training;
-* dynamic gesture model training;
+It includes:
+
+* static landmark extraction;
+* static ASL alphabet model training;
+* real-time static inference tests;
+* dynamic video landmark extraction;
 * LSTM experiments;
 * Transformer experiments;
 * model evaluation;
-* real-time inference tests.
+* training curves and confusion matrices.
 
 ### Shared Models
 
-The `shared_models/` folder contains the trained artifacts used by the backend, including:
+The `shared_models/` folder contains the trained artifacts used by the backend.
+
+It includes:
 
 * static MLP model;
 * static scaler;
@@ -89,15 +97,21 @@ The `shared_models/` folder contains the trained artifacts used by the backend, 
 * MediaPipe pose landmarker task;
 * dynamic label encoders.
 
+### Docs
+
+The `docs/` folder contains the official practical assignment and the final practical work presentation.
+
 ## Recognition Modes
 
 The prototype supports two recognition modes.
 
-### 1. Static Gesture Recognition
+## 1. Static Gesture Recognition
 
 Static recognition is used for ASL alphabet gestures.
 
-The pipeline is:
+The system receives a single webcam frame, extracts hand landmarks and classifies the gesture as an ASL letter or control token.
+
+The static recognition pipeline is:
 
 ```txt
 Single webcam frame
@@ -113,20 +127,26 @@ MLP classifier
 Predicted ASL letter
 ```
 
-The static model recognizes ASL alphabet letters and control tokens such as `space` and `del`.
+The static model recognizes ASL alphabet letters and control tokens such as:
+
+* `space`;
+* `del`;
+* `nothing`.
 
 During notebook evaluation, the static MLP model achieved approximately:
 
 * **97% validation accuracy**;
 * **97% test accuracy**.
 
-These results were obtained under dataset conditions and may vary in real-time webcam usage.
+These results were obtained under dataset conditions and may vary in real-time webcam usage depending on lighting, camera quality, distance and hand positioning.
 
-### 2. Dynamic Gesture Recognition
+## 2. Dynamic Gesture Recognition
 
 Dynamic recognition is used for ASL words involving movement.
 
-The pipeline is:
+Unlike static recognition, this mode analyses a sequence of frames instead of a single image.
+
+The dynamic recognition pipeline is:
 
 ```txt
 Sequence of webcam frames
@@ -140,7 +160,7 @@ LSTM or Transformer model
 Predicted ASL word
 ```
 
-The final backend prioritizes the Transformer-based dynamic model when available.
+The final backend prioritizes the Transformer-based dynamic model when available and falls back to the LSTM model when necessary.
 
 The dynamic model works with a vocabulary of ASL words and uses temporal information across multiple frames.
 
@@ -158,13 +178,36 @@ The prototype includes:
 * static ASL alphabet recognition;
 * dynamic ASL word recognition;
 * confidence score display;
-* phrase composition;
+* automatic static token confirmation;
 * manual token addition;
+* phrase composition;
 * delete and clear controls;
 * phrase correction;
 * text-to-speech output;
-* dark interface theme;
+* dark/light theme toggle;
 * FastAPI backend with documented endpoints.
+
+## Phrase Correction
+
+The system includes a phrase correction module.
+
+By default, the backend applies local correction rules for common recognized sequences.
+
+Optionally, the system can be configured to use a local LLM through **Ollama**, allowing ASL-like word sequences to be converted into more natural English sentences.
+
+Example:
+
+```txt
+I WANT WATER
+  ↓
+I want some water, please.
+```
+
+## Text-to-Speech
+
+The frontend uses the browser's built-in speech synthesis when available.
+
+The backend also provides a `/api/speak` endpoint, which can generate speech using Edge TTS as a fallback.
 
 ## Technologies Used
 
@@ -215,14 +258,14 @@ POST /api/speak
 | `/api/health`          | Checks backend status and loaded models              |
 | `/api/predict`         | Predicts a static gesture from one frame             |
 | `/api/predict_dynamic` | Predicts a dynamic gesture from a sequence of frames |
-| `/api/llm_correct`     | Applies basic phrase correction                      |
-| `/api/speak`           | Converts the phrase into speech                      |
+| `/api/llm_correct`     | Applies phrase correction                            |
+| `/api/speak`           | Converts text into speech                            |
 
 ## Local Setup
 
-### 1. Backend
+## 1. Backend
 
-From the `TP/backend` folder:
+From the `TrabalhoPratico/backend` folder:
 
 ```bash
 python3.11 -m venv .venv
@@ -251,9 +294,9 @@ The API documentation is available at:
 http://localhost:8000/docs
 ```
 
-### 2. Frontend
+## 2. Frontend
 
-From the `TP/frontend` folder:
+From the `TrabalhoPratico/frontend` folder:
 
 ```bash
 npm install
@@ -282,7 +325,7 @@ NEXT_PUBLIC_API_URL=http://localhost:8000/api
 
 The backend can be configured using the `.env` file.
 
-Example values:
+Example configuration:
 
 ```env
 ASLAI_APP_NAME=ASLAI API
@@ -295,6 +338,8 @@ ASLAI_SEQUENCE_LENGTH=30
 ASLAI_MINIMUM_DYNAMIC_FRAMES=5
 ASLAI_STATIC_CONFIDENCE_THRESHOLD=0.75
 ASLAI_MODEL_ARTIFACTS_DIR=../shared_models
+ASLAI_HAND_LANDMARKER_TASK_PATH=../shared_models/hand_landmarker.task
+ASLAI_POSE_LANDMARKER_TASK_PATH=../shared_models/pose_landmarker_lite.task
 ```
 
 ## How to Use
@@ -314,7 +359,11 @@ ASLAI_MODEL_ARTIFACTS_DIR=../shared_models
 
 Static mode is designed for spelling words using ASL alphabet gestures.
 
-The system continuously reads webcam frames and predicts the current gesture. The user can add the recognized letter to the phrase or use control gestures such as `space` and `del`.
+The system continuously captures webcam frames and predicts the current gesture.
+
+When the same gesture remains stable for several frames and passes the confidence threshold, the frontend can automatically add the recognized token to the phrase.
+
+The user can also manually add the current prediction.
 
 ## Dynamic Mode Usage
 
@@ -322,14 +371,21 @@ Dynamic mode is designed for recognizing complete ASL words.
 
 The user starts the capture, performs the gesture, stops the capture and the backend classifies the sequence of frames.
 
-This mode is more complex because it depends on movement, timing, camera position and body visibility.
+This mode is more complex because it depends on:
+
+* movement quality;
+* timing;
+* body visibility;
+* camera position;
+* lighting conditions;
+* consistency between training and real-time usage.
 
 ## Model Artifacts
 
 The backend expects the trained models to be available in:
 
 ```txt
-TP/shared_models/
+TrabalhoPratico/shared_models/
 ```
 
 Important artifacts include:
@@ -343,6 +399,49 @@ asl_transformer_v2_100_2.pt
 label_encoder_wlasl100.joblib
 hand_landmarker.task
 pose_landmarker_full.task
+pose_landmarker_lite.task
+```
+
+## Folder Structure
+
+```txt
+TrabalhoPratico/
+├── README.md
+├── .gitignore
+├── backend/
+│   ├── README.md
+│   ├── requirements.txt
+│   ├── .env.example
+│   └── app/
+│       ├── main.py
+│       ├── api/
+│       ├── core/
+│       ├── services/
+│       └── utils/
+│
+├── frontend/
+│   ├── app/
+│   ├── components/
+│   ├── lib/
+│   ├── package.json
+│   └── tailwind.config.ts
+│
+├── notebooks/
+│   ├── static/
+│   └── dynamic/
+│
+├── shared_models/
+│   ├── mlp_asl_landmarks.joblib
+│   ├── scaler_asl_landmarks.joblib
+│   ├── label_encoder_asl_landmarks.joblib
+│   ├── asl_lstm_final.pt
+│   ├── asl_transformer_v2_100_2.pt
+│   ├── hand_landmarker.task
+│   └── pose_landmarker_full.task
+│
+└── docs/
+    ├── ApresentacaoTP.pdf
+    └── Trabalho pratico 2526.pdf
 ```
 
 ## Limitations
@@ -354,7 +453,7 @@ The current version has some limitations:
 * dynamic gesture recognition is sensitive to timing and movement variation;
 * automatic segmentation of continuous sign language is not fully solved;
 * the vocabulary is limited to the trained classes;
-* phrase correction is basic and optional;
+* phrase correction is simple and may require stronger language models;
 * the system is a prototype and not a certified translation tool.
 
 ## Future Improvements
@@ -364,12 +463,13 @@ Possible improvements include:
 * adding support for Portuguese Sign Language;
 * collecting an LGP dataset;
 * improving dynamic gesture segmentation;
-* increasing the vocabulary size;
+* increasing the dynamic vocabulary size;
 * improving robustness in uncontrolled environments;
 * adding user calibration;
-* improving phrase correction with stronger language models;
-* adding bidirectional translation;
-* testing with real users;
+* improving phrase correction with stronger local language models;
+* improving the real-time dynamic recognition workflow;
+* adding bidirectional translation from text/speech to sign language;
+* testing the system with real users;
 * deploying the prototype online.
 
 ## Academic Context
