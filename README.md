@@ -1,89 +1,201 @@
-# ASLAI — Reconhecimento e Tradução de Língua Gestual
+# ASLAI — Sign Language Recognition and Translation with AI
 
-## Sobre o Projeto
+ASLAI is an academic project developed for the **Sensorization and Environment** course, as part of the **Master's Degree in Artificial Intelligence** at the **University of Minho**.
 
-Este projeto tem como objetivo o desenvolvimento de um sistema capaz de reconhecer gestos de língua gestual e convertê-los em texto e voz, recorrendo a técnicas de **Visão Computacional** e **Machine Learning**.
+The project explores the use of **Computer Vision**, **Machine Learning** and real-time sensing techniques to recognize sign language gestures and convert them into **text and speech**.
 
-A motivação principal do trabalho é contribuir para a **redução das barreiras de comunicação** entre a comunidade surda e a população ouvinte, explorando soluções tecnológicas acessíveis, não invasivas e com potencial de aplicação em contextos reais.
+The repository contains both stages of the work:
 
-## Tema
+* **TI — Research Work**: state-of-the-art analysis and scientific research paper;
+* **TP — Practical Work**: functional prototype for real-time sign language recognition.
 
-O projeto enquadra-se na área de **Interação Pessoa-Máquina**, combinando:
+## Final Grades
 
-- captura de vídeo em tempo real;
-- extração de landmarks com **MediaPipe**;
-- reconhecimento de gestos estáticos e dinâmicos;
-- conversão dos gestos reconhecidos em **texto**;
-- síntese da frase final em **voz**.
+| Component | Description         | Grade |
+| --------- | ------------------- | ----: |
+| TI        | Research Work       | 19/20 |
+| TP        | Practical Prototype | 18/20 |
 
-Embora a motivação original esteja centrada na **Língua Gestual Portuguesa (LGP)**, a implementação prática recorre à **American Sign Language (ASL)**, devido à maior disponibilidade de datasets públicos para treino e validação dos modelos.
+## Project Motivation
 
-## Objetivo Principal
+Sign language is a fundamental communication method for many deaf people. However, communication barriers still exist in everyday contexts such as education, healthcare, transport, public services and general customer support.
 
-Criar uma solução inteligente e acessível que permita:
+This project aims to explore how artificial intelligence can help reduce those barriers by creating an accessible, non-invasive and low-cost system capable of recognizing sign language gestures through a standard webcam.
 
-- reconhecer gestos feitos pelo utilizador através da câmara;
-- interpretar esses gestos com recurso a modelos de Machine Learning;
-- apresentar o resultado em formato textual;
-- produzir também uma saída em áudio, tornando a comunicação mais natural.
+## General Objective
 
-## Abordagem do Sistema
+The main objective of ASLAI is to design and implement a system capable of:
 
-O sistema foi pensado em torno de dois tipos de reconhecimento:
+* capturing gestures through a camera;
+* extracting visual features from the user's body and hands;
+* recognizing static and dynamic gestures;
+* converting recognized gestures into text;
+* producing speech output from the generated phrase.
 
-### 1. Gestos Estáticos
-Reconhecimento de letras do alfabeto gestual a partir de uma única frame, usando landmarks da mão e modelos de classificação.
+## Research and Practical Development
 
-### 2. Gestos Dinâmicos
-Reconhecimento de palavras ou sequências gestuais com componente temporal, usando sequências de frames e modelos adequados a dados temporais.
+The project started with a research phase focused on the state of the art in sign language recognition and translation systems.
 
-## Tecnologias e Conceitos Envolvidos
+The research work studied:
 
-- **MediaPipe**
-- **Visão Computacional**
-- **Machine Learning**
-- **MLP**
-- **LSTM**
-- **Landmarks 3D**
-- **Reconhecimento de gestos**
-- **Texto para voz**
-- **Acessibilidade**
-- **Inteligência Artificial aplicada à inclusão**
+* Portuguese Sign Language and its challenges;
+* American Sign Language datasets;
+* Computer Vision approaches;
+* MediaPipe-based landmark extraction;
+* static gesture recognition;
+* dynamic gesture recognition;
+* privacy, ethics and accessibility concerns;
+* future trends in AI-based sign language translation.
 
-## Motivação
+The practical phase then implemented a working prototype based on the concepts studied during the research phase.
 
-A língua gestual é um meio de comunicação essencial para muitas pessoas surdas. No entanto, continuam a existir dificuldades de comunicação em vários contextos do quotidiano, como:
+## Why ASL?
 
-- educação;
-- saúde;
-- serviços públicos;
-- transportes;
-- atendimento geral.
+The original motivation of the project is related to **Portuguese Sign Language (LGP)**. However, large-scale public annotated datasets for LGP are still limited.
 
-Este projeto surge como uma proposta tecnológica para aproximar mundos que muitas vezes continuam separados por falta de ferramentas acessíveis e imediatas.
+For this reason, the implementation focuses on **American Sign Language (ASL)**, which has more mature and publicly available datasets, such as:
 
-## Impacto Esperado
+* ASL Alphabet Dataset;
+* WLASL;
+* ASL-LEX.
 
-Espera-se que este tipo de sistema possa contribuir para:
+The methodology can later be adapted to LGP if larger and more diverse datasets become available.
 
-- melhorar a acessibilidade;
-- promover inclusão social;
-- facilitar a comunicação em tempo real;
-- apoiar contextos educativos e institucionais;
-- demonstrar o potencial da IA em problemas com impacto humano real.
+## Main Technologies
 
----
+The project uses:
 
-**Universidade do Minho**  
-**Mestrado em Inteligência Artificial**  
-**Sensorização e Ambiente**
+* Python;
+* FastAPI;
+* Next.js;
+* React;
+* TypeScript;
+* Tailwind CSS;
+* OpenCV;
+* MediaPipe;
+* Scikit-learn;
+* PyTorch;
+* Machine Learning models;
+* Text-to-Speech.
 
+## Repository Structure
 
+```txt
+.
+├── TI/
+│   ├── README.md
+│   └── research-paper.pdf
+│
+├── TP/
+│   ├── README.md
+│   ├── backend/
+│   ├── frontend/
+│   ├── notebooks/
+│   └── shared_models/
+│
+└── README.md
+```
 
+## Project Components
 
+### TI — Research Work
 
+The research work presents a scientific analysis of sign language recognition and translation systems using Computer Vision and Machine Learning.
 
+It discusses the technical feasibility of using webcam-based sensing, MediaPipe landmarks and machine learning models to recognize gestures and translate them into text and speech.
 
+### TP — Practical Work
 
+The practical work implements a functional prototype with:
 
+* webcam-based real-time recognition;
+* static gesture recognition for ASL alphabet letters;
+* dynamic gesture recognition for ASL words;
+* phrase composition;
+* basic phrase correction;
+* text-to-speech output;
+* web interface;
+* FastAPI backend for inference.
 
+## System Overview
+
+The general pipeline follows these steps:
+
+```txt
+Webcam
+  ↓
+Frame Capture
+  ↓
+MediaPipe Landmark Extraction
+  ↓
+Machine Learning Model
+  ↓
+Gesture Prediction
+  ↓
+Text Composition
+  ↓
+Phrase Correction
+  ↓
+Speech Output
+```
+
+## Recognition Modes
+
+The system supports two recognition modes:
+
+### Static Recognition
+
+Static recognition focuses on ASL alphabet gestures. The system receives a single frame, extracts hand landmarks and classifies the gesture as a letter or control token.
+
+### Dynamic Recognition
+
+Dynamic recognition focuses on words or signs that involve movement. The system receives a sequence of frames, extracts temporal landmark information and classifies the full gesture sequence.
+
+## Ethical and Social Considerations
+
+This project treats sign language recognition as an accessibility support tool, not as a replacement for human interpreters.
+
+Important concerns include:
+
+* involvement of the deaf community in future validation;
+* privacy and data protection;
+* local processing whenever possible;
+* dataset bias;
+* accessibility in real-world environments;
+* responsible use of AI.
+
+## Limitations
+
+The current prototype has some limitations:
+
+* it is based on ASL rather than LGP;
+* dynamic recognition is more sensitive to lighting, camera angle and movement quality;
+* automatic gesture segmentation is still limited;
+* real-world use would require broader testing with diverse users;
+* the system should not be used in critical contexts without human supervision.
+
+## Future Work
+
+Possible future improvements include:
+
+* collecting and annotating a Portuguese Sign Language dataset;
+* improving continuous sign language recognition;
+* adding automatic gesture segmentation;
+* improving robustness in uncontrolled environments;
+* expanding the dynamic gesture vocabulary;
+* integrating more advanced Transformer-based models;
+* testing with real users from the deaf community;
+* supporting bidirectional translation from text/speech to sign language.
+
+## Academic Context
+
+Developed at:
+
+**University of Minho**
+**Master's Degree in Artificial Intelligence**
+**Sensorization and Environment**
+**Academic Year 2025/2026**
+
+## License
+
+This repository is intended for academic and educational purposes.
