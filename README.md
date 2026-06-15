@@ -84,13 +84,16 @@ The project uses:
 .
 ├── TrabalhoInvestigacao/
 │   ├── README.md
-│   └── research-paper.pdf
+│   ├── Trabalho investigacao 2526.pdf
+│   ├── ApresentacaoTI.pdf
+│   └── TrabalhoInvestigacaoG12.pdf
 │
 ├── TrabalhoPratico/
 │   ├── README.md
 │   ├── backend/
 │   ├── frontend/
 │   ├── notebooks/
+│   ├── docs/
 │   └── shared_models/
 │
 └── README.md
